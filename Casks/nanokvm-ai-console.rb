@@ -1,9 +1,9 @@
 cask "nanokvm-ai-console" do
   arch arm: "arm64", intel: "x64"
 
-  version "1.0.1"
-  sha256 arm:   "6cd9349b98b0e7699fca8df508749c7c5c2deae204cc36b5a7d60a3404ee329b",
-         intel: "963a127eacf9936153c3770b125ee2e89e00a3edf4787cddd244318edb14d967"
+  version "1.0.2"
+  sha256 arm:   "6c5b35a5d9e5e4c33af2b1134acffbb2b9007ba72301364087bb487113c84413",
+         intel: "c3b463b9a32f20f7b62d4a327aa075cdcd5a9f9aa4ca468571e766e218aba6cf"
 
   url "https://github.com/blue1st/nanokvm-ai-console/releases/download/v#{version}/NanoKVM-AI-Console-#{version}-mac-#{arch}.dmg"
   name "NanoKVM AI Console"
@@ -17,13 +17,9 @@ cask "nanokvm-ai-console" do
 
   app "NanoKVM AI Console.app"
 
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-cr", "#{appdir}/NanoKVM AI Console.app"],
-                   sudo: false
-    system_command "/usr/bin/codesign",
-                   args: ["--force", "--deep", "--sign", "-", "#{appdir}/NanoKVM AI Console.app"],
-                   sudo: false
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-cr", "{{appdir}}/NanoKVM AI Console.app"]
+    run "/usr/bin/codesign", args: ["--force", "--deep", "--sign", "-", "{{appdir}}/NanoKVM AI Console.app"]
   end
 
   zap trash: [
