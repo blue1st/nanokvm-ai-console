@@ -39,7 +39,8 @@
       "buildResources": "build"
     },
     "asarUnpack": [
-      "dist-electron/network-worker.cjs"
+      "dist-electron/network-worker.cjs",
+      "bin/**/*"
     ],
     "files": [
       "dist/**/*",

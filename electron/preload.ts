@@ -13,6 +13,7 @@ import type {
 export interface ElectronAPI {
   getVersion: () => Promise<string>;
   checkUpdate: () => Promise<UpdateCheckResult>;
+  getProxyScriptPath: () => Promise<string>;
   getConfig: () => Promise<AppConfig>;
   saveConfig: (config: Partial<AppConfig>) => Promise<AppConfig>;
   getLlamaModels: (baseUrl?: string, apiKey?: string) => Promise<string[]>;
@@ -60,6 +61,7 @@ export interface ElectronAPI {
 const api: ElectronAPI = {
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
+  getProxyScriptPath: () => ipcRenderer.invoke('app:getProxyScriptPath'),
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (cfg) => ipcRenderer.invoke('config:save', cfg),
   getLlamaModels: (url, key) => ipcRenderer.invoke('llama:getModels', url, key),

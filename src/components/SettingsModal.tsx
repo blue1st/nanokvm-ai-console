@@ -16,6 +16,8 @@ import {
   Trash2,
   Info,
   ExternalLink,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import type { AppConfig, UpdateCheckResult } from '../types';
 
@@ -52,6 +54,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [appVersion, setAppVersion] = useState<string>('');
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+
+  const [proxyScriptPath, setProxyScriptPath] = useState<string>('');
+  const [showApiKeyInSnippet, setShowApiKeyInSnippet] = useState(true);
+  const [selectedSnippetTab, setSelectedSnippetTab] = useState<'claude' | 'cursor' | 'cli'>('claude');
 
   const handleCopySnippet = (key: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -95,6 +101,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (window.api) {
         window.api.getVersion().then((v: string) => {
           setAppVersion(v);
+        }).catch(() => {});
+
+        window.api.getProxyScriptPath().then((p: string) => {
+          setProxyScriptPath(p);
         }).catch(() => {});
 
         window.api.getConfig().then((cfg: AppConfig) => {
@@ -586,75 +596,185 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             <p className="text-xs text-slate-400 leading-relaxed">
               本アプリ付属の Stdio MCP Proxy を利用すると、Claude Desktop や Cursor、Antigravity からでも NanoKVM の自己署名証明書やAPI認証を自動処理し、遠隔操作ツールをそのまま呼び出せます。
+              現在設定されている NanoKVM の接続情報とスクリプト実パスが自動的に埋め込まれます。
             </p>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-slate-300">
-                  Claude Desktop 設定 (<code className="text-cyan-300 font-mono text-[11px]">claude_desktop_config.json</code>)
-                </span>
+            {/* Tab selection & View toggles */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
                 <button
                   type="button"
-                  onClick={() =>
-                    handleCopySnippet(
-                      'claude',
-                      JSON.stringify(
+                  onClick={() => setSelectedSnippetTab('claude')}
+                  className={`px-3 py-1 rounded text-xs font-medium transition cursor-pointer ${
+                    selectedSnippetTab === 'claude'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Claude Desktop
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSnippetTab('cursor')}
+                  className={`px-3 py-1 rounded text-xs font-medium transition cursor-pointer ${
+                    selectedSnippetTab === 'cursor'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Cursor / VS Code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSnippetTab('cli')}
+                  className={`px-3 py-1 rounded text-xs font-medium transition cursor-pointer ${
+                    selectedSnippetTab === 'cli'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  ターミナル (CLI)
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowApiKeyInSnippet(!showApiKeyInSnippet)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs border border-slate-800 transition cursor-pointer"
+                  title={showApiKeyInSnippet ? 'APIキーを伏字にする' : 'APIキーを平文表示する'}
+                >
+                  {showApiKeyInSnippet ? (
+                    <>
+                      <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                      <span>APIキーを隠す</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3.5 h-3.5 text-slate-400" />
+                      <span>APIキーを表示</span>
+                    </>
+                  )}
+                </button>
+
+                {(() => {
+                  const actualProxyPath =
+                    proxyScriptPath ||
+                    '/Applications/NanoKVM AI Console.app/Contents/Resources/app.asar.unpacked/bin/nanokvm-mcp-proxy.js';
+                  const actualEndpoint = config.nanokvm.endpoint || 'https://<NanoKVM-IP>';
+                  const actualApiKey = config.nanokvm.apiKey || '<NanoKVM-API-Key>';
+
+                  const getSnippetText = (maskKey = false) => {
+                    const keyToUse = maskKey ? '••••••••' : actualApiKey;
+                    if (selectedSnippetTab === 'claude' || selectedSnippetTab === 'cursor') {
+                      return JSON.stringify(
                         {
                           mcpServers: {
                             nanokvm: {
                               command: 'node',
-                              args: [
-                                '<path-to-nanokvm-go-client>/bin/nanokvm-mcp-proxy.js',
-                              ],
+                              args: [actualProxyPath],
                               env: {
-                                NANOKVM_ENDPOINT: config.nanokvm.endpoint,
-                                NANOKVM_API_KEY: config.nanokvm.apiKey,
+                                NANOKVM_ENDPOINT: actualEndpoint,
+                                NANOKVM_API_KEY: keyToUse,
                               },
                             },
                           },
                         },
                         null,
                         2
-                      )
-                    )
-                  }
-                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] transition border border-slate-700 cursor-pointer"
-                >
-                  {copiedKey === 'claude' ? (
-                    <>
-                      <Check className="w-3 h-3 text-emerald-400" />
-                      <span className="text-emerald-300">コピー完了!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3 h-3" />
-                      <span>設定JSONをコピー</span>
-                    </>
-                  )}
-                </button>
-              </div>
+                      );
+                    }
+                    return `NANOKVM_ENDPOINT="${actualEndpoint}" NANOKVM_API_KEY="${keyToUse}" node "${actualProxyPath}"`;
+                  };
 
-              <pre className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-300 overflow-x-auto leading-relaxed select-all">
-{JSON.stringify(
-  {
-    mcpServers: {
-      nanokvm: {
-        command: "node",
-        args: [
-          "<path-to-nanokvm-go-client>/bin/nanokvm-mcp-proxy.js"
-        ],
-        env: {
-          NANOKVM_ENDPOINT: config.nanokvm.endpoint,
-          NANOKVM_API_KEY: config.nanokvm.apiKey ? "******" : ""
-        }
-      }
-    }
-  },
-  null,
-  2
-)}
-              </pre>
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleCopySnippet(selectedSnippetTab, getSnippetText(false))}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition shadow-sm shadow-blue-500/20 cursor-pointer"
+                    >
+                      {copiedKey === selectedSnippetTab ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-white" />
+                          <span>コピー完了!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>設定をコピー</span>
+                        </>
+                      )}
+                    </button>
+                  );
+                })()}
+              </div>
             </div>
+
+            {/* Snippet Code block */}
+            {(() => {
+              const actualProxyPath =
+                proxyScriptPath ||
+                '/Applications/NanoKVM AI Console.app/Contents/Resources/app.asar.unpacked/bin/nanokvm-mcp-proxy.js';
+              const actualEndpoint = config.nanokvm.endpoint || 'https://<NanoKVM-IP>';
+              const actualApiKey = config.nanokvm.apiKey || '<NanoKVM-API-Key>';
+              const displayApiKey = showApiKeyInSnippet ? actualApiKey : '••••••••';
+
+              let snippetContent = '';
+              let filePathGuide = '';
+
+              if (selectedSnippetTab === 'claude') {
+                filePathGuide = '設定ファイル: ~/Library/Application Support/Claude/claude_desktop_config.json';
+                snippetContent = JSON.stringify(
+                  {
+                    mcpServers: {
+                      nanokvm: {
+                        command: 'node',
+                        args: [actualProxyPath],
+                        env: {
+                          NANOKVM_ENDPOINT: actualEndpoint,
+                          NANOKVM_API_KEY: displayApiKey,
+                        },
+                      },
+                    },
+                  },
+                  null,
+                  2
+                );
+              } else if (selectedSnippetTab === 'cursor') {
+                filePathGuide = '設定ファイル: .cursor/mcp.json (または Cursor 設定 > MCP Servers)';
+                snippetContent = JSON.stringify(
+                  {
+                    mcpServers: {
+                      nanokvm: {
+                        command: 'node',
+                        args: [actualProxyPath],
+                        env: {
+                          NANOKVM_ENDPOINT: actualEndpoint,
+                          NANOKVM_API_KEY: displayApiKey,
+                        },
+                      },
+                    },
+                  },
+                  null,
+                  2
+                );
+              } else {
+                filePathGuide = 'ターミナルで動作確認する場合の直接実行コマンド:';
+                snippetContent = `NANOKVM_ENDPOINT="${actualEndpoint}" \\\nNANOKVM_API_KEY="${displayApiKey}" \\\nnode "${actualProxyPath}"`;
+              }
+
+              return (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-slate-400 font-mono flex items-center justify-between">
+                    <span>{filePathGuide}</span>
+                    <span className="text-[10px] text-slate-500">※コピー時は実際の値が入ります</span>
+                  </div>
+                  <pre className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-cyan-200/90 overflow-x-auto leading-relaxed select-all">
+{snippetContent}
+                  </pre>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Section 4: App Info & Updates */}

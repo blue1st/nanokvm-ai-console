@@ -474,6 +474,35 @@ ipcMain.handle('app:openExternal', async (_, targetUrl: string) => {
   }
 });
 
+function getProxyScriptPath(): string {
+  // 1. If running in development or from source repo
+  const devPath = path.join(__dirname, '../bin/nanokvm-mcp-proxy.js');
+  if (fs.existsSync(devPath)) {
+    return path.resolve(devPath);
+  }
+
+  // 2. If packaged with electron-builder and unpacked
+  if (process.resourcesPath) {
+    const unpackedPath = path.join(process.resourcesPath, 'app.asar.unpacked/bin/nanokvm-mcp-proxy.js');
+    if (fs.existsSync(unpackedPath)) {
+      return path.resolve(unpackedPath);
+    }
+  }
+
+  // 3. From appPath
+  const appPath = app.getAppPath();
+  const inAppPath = path.join(appPath, 'bin/nanokvm-mcp-proxy.js');
+  if (fs.existsSync(inAppPath)) {
+    return path.resolve(inAppPath);
+  }
+
+  return path.resolve(devPath);
+}
+
+ipcMain.handle('app:getProxyScriptPath', () => {
+  return getProxyScriptPath();
+});
+
 function compareSemver(v1: string, v2: string): number {
   const parse = (v: string) => v.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
   const p1 = parse(v1);
