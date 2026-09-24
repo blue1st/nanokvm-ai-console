@@ -51,6 +51,9 @@
     "mac": {
       "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "NanoKVM AI Console requires local network access to communicate with NanoKVM Go and local llama.cpp servers on your LAN."
+      },
       "target": [
         {
           "target": "dmg",

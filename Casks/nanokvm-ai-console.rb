@@ -21,6 +21,9 @@ cask "nanokvm-ai-console" do
     system_command "/usr/bin/xattr",
                    args: ["-cr", "#{appdir}/NanoKVM AI Console.app"],
                    sudo: false
+    system_command "/usr/bin/codesign",
+                   args: ["--force", "--deep", "--sign", "-", "#{appdir}/NanoKVM AI Console.app"],
+                   sudo: false
   end
 
   zap trash: [
