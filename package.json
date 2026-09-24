@@ -1,0 +1,117 @@
+{
+  "name": "nanokvm-ai-console",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Desktop AI Console for NanoKVM Remote MCP and llama.cpp server",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "NODE_OPTIONS='--no-network-family-autoselection' vite",
+    "build": "tsc && vite build",
+    "package": "tsc && vite build && electron-builder",
+    "package:dir": "tsc && vite build && electron-builder --dir",
+    "package:mac": "tsc && vite build && electron-builder --mac",
+    "package:win": "tsc && vite build && electron-builder --win",
+    "package:linux": "tsc && vite build && electron-builder --linux",
+    "generate:icons": "./build/build-icons.sh",
+    "release": "release-it",
+    "release:dry": "release-it --dry-run",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types test/verify.ts",
+    "mcp-proxy": "node bin/nanokvm-mcp-proxy.js",
+    "lint": "eslint ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blue1st/nanokvm-ai-console.git"
+  },
+  "homepage": "https://github.com/blue1st/nanokvm-ai-console#readme",
+  "bugs": "https://github.com/blue1st/nanokvm-ai-console/issues",
+  "bin": {
+    "nanokvm-mcp-proxy": "./bin/nanokvm-mcp-proxy.js"
+  },
+  "build": {
+    "appId": "com.nanokvm.aiconsole",
+    "productName": "NanoKVM AI Console",
+    "artifactName": "NanoKVM-AI-Console-${version}-${os}-${arch}.${ext}",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "asarUnpack": [
+      "dist-electron/network-worker.cjs"
+    ],
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "bin/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["arm64", "x64"]
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "category": "Development"
+    }
+  },
+  "keywords": [
+    "nanokvm",
+    "mcp",
+    "llama.cpp",
+    "ai",
+    "electron"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.0",
+    "eventsource": "^2.0.2",
+    "lucide-react": "^1.16.0",
+    "openai": "^4.86.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.0.1",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/eventsource": "^1.1.15",
+    "@types/node": "^22.13.9",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.3",
+    "release-it": "^21.0.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  }
+}

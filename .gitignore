@@ -1,0 +1,28 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+dist-electron/
+release/
+out/
+*.dmg
+*.zip
+*.exe
+*.app
+
+# Local user configs & jobs
+config.json
+scheduled-jobs.json
+
+# Environment & OS files
+.env
+.env.local
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

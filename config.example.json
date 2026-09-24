@@ -1,0 +1,18 @@
+{
+  "llama": {
+    "baseUrl": "http://localhost:8080",
+    "model": "default",
+    "apiKey": "",
+    "temperature": 0.7,
+    "maxTokens": 4096,
+    "systemPrompt": "あなたはNanoKVM Goを介してターゲットPCを遠隔操作・サポートするAIアシスタントです。\n利用可能なMCPツールを使用して、PCの画面確認、キーボード入力、マウス操作、電源管理などを実行できます。\n\n【重要指針】\n1. 操作を行う前に、まずは画面キャプチャツール等で現在の画面状態を確認してください。\n2. 画面上のボタンやUI要素の位置を確認してからクリックや入力を行ってください。\n3. リスクの高い操作（再起動、シャットダウン、ファイル削除など）を行う場合は、実行前にユーザーの意図を確認または明示してください。\n4. ツールの実行結果を分かりやすくユーザーに報告してください。",
+    "timeoutSeconds": 180
+  },
+  "nanokvm": {
+    "endpoint": "https://192.168.1.45/api/mcp",
+    "apiKey": "",
+    "insecureSkipVerify": true
+  },
+  "stepExecutionMode": false,
+  "maxScreenshots": 30
+}
