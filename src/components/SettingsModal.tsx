@@ -347,12 +347,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       nanokvm: { ...config.nanokvm, endpoint: e.target.value },
                     })
                   }
-                  placeholder="https://192.168.1.45/api/mcp"
+                  placeholder="https://<NanoKVM-IP>/api/mcp (例: https://192.168.1.xxx/api/mcp)"
                   className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-700 rounded-md text-slate-100 focus:outline-none focus:border-purple-500"
                   required
                 />
                 <p className="text-[11px] text-slate-400">
-                  NanoKVM Web画面の Settings &gt; MCP で表示される Endpoint を入力してください。
+                  NanoKVM Go 本体のディスプレイ、または Web管理画面（Settings &gt; MCP）に表示されたエンドポイントURLを入力してください。
                 </p>
               </div>
 

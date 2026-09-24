@@ -71,7 +71,7 @@ NanoKVM Go が提供するリモート MCP (Model Context Protocol) サーバー
 2. **NanoKVM Go**:
    - ターゲットPCに接続し、NanoKVM Go のWeb管理画面を開きます。
    - **Settings** > **MCP** を開き、MCPスイッチを **ON** にします。
-   - 表示された `Endpoint` (例: `https://192.168.1.45/api/mcp`) と `API Key` を確認します。
+   - 画面上に表示された `Endpoint` (例: `https://<NanoKVMのIP>/api/mcp` ※NanoKVM本体のOLEDディスプレイまたはルーターのDHCP割当一覧、Web管理画面で確認したIP) と `API Key` を確認します。
 
 ---
 
@@ -148,7 +148,7 @@ GITHUB_TOKEN="ghp_xxx" npm run release
    - **エンドポイント URL**: 例 `http://192.168.1.100:8080` または `http://localhost:8080`
    - **接続テスト / モデル一覧更新**: クリックして利用可能なモデルを取得
 3. **NanoKVM Go Remote MCP 設定**:
-   - **MCP エンドポイント URL**: 例 `https://192.168.1.45/api/mcp`
+   - **MCP エンドポイント URL**: NanoKVM Go の画面に表示されたURL (例: `https://<NanoKVMのIP>/api/mcp`)
    - **API Key**: NanoKVM Web画面で確認した API Key を入力
    - **自己署名証明書 / 証明書検証エラーを無視する**: チェック（ON）
    - **NanoKVM MCP 接続テスト**: クリックして接続とツール取得を確認
@@ -180,10 +180,10 @@ GITHUB_TOKEN="ghp_xxx" npm run release
     "nanokvm": {
       "command": "node",
       "args": [
-        "/Users/t-kawasaki/src/desktop-apps/nanokvm-go-client/bin/nanokvm-mcp-proxy.js"
+        "<path-to-nanokvm-ai-console>/bin/nanokvm-mcp-proxy.js"
       ],
       "env": {
-        "NANOKVM_ENDPOINT": "https://192.168.1.45/api/mcp",
+        "NANOKVM_ENDPOINT": "https://<NanoKVMのIP>/api/mcp",
         "NANOKVM_API_KEY": "your_api_key_here"
       }
     }

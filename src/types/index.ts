@@ -9,7 +9,7 @@ export interface AppConfig {
     timeoutSeconds?: number; // e.g. 180 (3 min) or 300 (5 min) for local LLMs
   };
   nanokvm: {
-    endpoint: string; // e.g. https://192.168.1.45/api/mcp
+    endpoint: string; // e.g. https://<NanoKVM-IP>/api/mcp
     apiKey: string;
     insecureSkipVerify: boolean; // default true for self-signed certificates
   };

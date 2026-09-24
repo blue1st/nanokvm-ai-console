@@ -28,7 +28,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     timeoutSeconds: 180,
   },
   nanokvm: {
-    endpoint: 'https://192.168.1.45/api/mcp',
+    endpoint: '',
     apiKey: '',
     insecureSkipVerify: true,
   },

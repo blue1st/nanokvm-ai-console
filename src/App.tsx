@@ -552,7 +552,7 @@ export const App: React.FC = () => {
         <LiveViewPanel
           isOpen={isLiveViewOpen}
           onClose={() => setIsLiveViewOpen(false)}
-          endpoint={config?.nanokvm.endpoint || 'https://192.168.1.45/api/mcp'}
+          endpoint={config?.nanokvm.endpoint || ''}
         />
 
         {/* Screenshot Gallery & Timeline Sidebar */}

@@ -28,8 +28,8 @@ export const LiveViewPanel: React.FC<LiveViewPanelProps> = ({
   if (!isOpen) return null;
 
   // Calculate WebKVM root URL from MCP endpoint
-  // e.g. https://192.168.1.45/api/mcp -> https://192.168.1.45/#/
-  let webUrl = 'https://192.168.1.45/#/';
+  // e.g. https://<NanoKVM-IP>/api/mcp -> https://<NanoKVM-IP>/#/
+  let webUrl = '';
   try {
     if (endpoint) {
       const parsed = new URL(endpoint);

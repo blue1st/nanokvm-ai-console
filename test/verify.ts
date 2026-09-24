@@ -10,11 +10,10 @@ async function main() {
   const cfg = store.getConfig();
   assert.ok(cfg.llama.baseUrl, 'llama baseUrl should be set');
   assert.strictEqual(cfg.nanokvm.insecureSkipVerify, true, 'Default insecureSkipVerify must be true');
-  assert.ok(cfg.nanokvm.endpoint.startsWith('https://'), 'Default endpoint should be https');
 
   const updated = store.saveConfig({
     llama: { ...cfg.llama, baseUrl: 'http://192.168.1.100:8080', model: 'qwen2.5-coder' },
-    nanokvm: { ...cfg.nanokvm, endpoint: 'https://192.168.1.45/api/mcp', apiKey: 'sec_key_xyz' },
+    nanokvm: { ...cfg.nanokvm, endpoint: 'https://192.168.1.123/api/mcp', apiKey: 'sec_key_xyz' },
   });
   assert.strictEqual(updated.llama.baseUrl, 'http://192.168.1.100:8080');
   assert.strictEqual(updated.nanokvm.apiKey, 'sec_key_xyz');

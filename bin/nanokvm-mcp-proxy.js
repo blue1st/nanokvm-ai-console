@@ -55,6 +55,8 @@ function loadConfig() {
     const candidatePaths = [
       path.join(path.dirname(fileURLToPath(import.meta.url)), '../config.json'),
       path.join(process.cwd(), 'config.json'),
+      path.join(os.homedir(), 'Library/Application Support/nanokvm-ai-console/config.json'),
+      path.join(os.homedir(), '.config/nanokvm-ai-console/config.json'),
       path.join(os.homedir(), 'Library/Application Support/nanokvm-go-client/config.json'),
       path.join(os.homedir(), '.config/nanokvm-go-client/config.json'),
     ];
@@ -74,8 +76,15 @@ function loadConfig() {
     }
   }
 
+  if (!endpoint) {
+    console.error('Error: NanoKVM MCP endpoint is required.');
+    console.error('Please specify NANOKVM_ENDPOINT environment variable, --endpoint argument, or configure it in the GUI app.');
+    console.error('Check the IP address on your NanoKVM Go OLED screen or Web interface (Settings > MCP).');
+    process.exit(1);
+  }
+
   return {
-    endpoint: endpoint || 'https://192.168.1.45/api/mcp',
+    endpoint,
     apiKey: apiKey || '',
   };
 }
