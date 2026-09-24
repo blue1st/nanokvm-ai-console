@@ -80,11 +80,15 @@ NanoKVM Go が提供するリモート MCP (Model Context Protocol) サーバー
 ## インストール方法
 
 ### macOS (Homebrew 経由)
-macOS の隔離属性（Gatekeeper の「開発元が未確認のため開けません」警告）を自動解除（`xattr -cr`）してインストールできます：
+[blue1st/homebrew-taps](https://github.com/blue1st/homebrew-taps) を利用し、macOS の隔離属性（Gatekeeper の「開発元が未確認のため開けません」警告）を自動解除（`xattr -cr`）してワンコマンドでインストールできます：
 
 ```bash
-# Cask 定義 URL を直接指定してインストール
-brew install --cask https://raw.githubusercontent.com/blue1st/nanokvm-ai-console/main/Casks/nanokvm-ai-console.rb
+# Tap を追加してインストール
+brew tap blue1st/taps
+brew install --cask nanokvm-ai-console
+
+# またはワンライナーで直接インストール
+brew install --cask blue1st/taps/nanokvm-ai-console
 ```
 
 ### GitHub Releases からの手動ダウンロード

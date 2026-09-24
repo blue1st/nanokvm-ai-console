@@ -70,3 +70,38 @@ jobs:
             release/SHA256SUMS.txt
             Casks/nanokvm-ai-console.rb
           generate_release_notes: true
+
+  sync-tap:
+    name: Sync Homebrew Tap
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync Cask to blue1st/homebrew-taps
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN || secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::notice ::TAP_GITHUB_TOKEN or PERSONAL_ACCESS_TOKEN not set. Skipping automatic tap push. Cask formula is available in release assets."
+            exit 0
+          fi
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git clone https://x-access-token:${TAP_TOKEN}@github.com/blue1st/homebrew-taps.git tap_repo
+          mkdir -p tap_repo/Casks
+          cp Casks/nanokvm-ai-console.rb tap_repo/Casks/nanokvm-ai-console.rb
+
+          cd tap_repo
+          git add Casks/nanokvm-ai-console.rb
+          if git diff --staged --quiet; then
+            echo "No changes to Cask formula."
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            git commit -m "feat(cask): update nanokvm-ai-console to v${VERSION}"
+            git push origin main
+            echo "Successfully updated blue1st/homebrew-taps!"
+          fi
