@@ -68,10 +68,12 @@ NanoKVM Go が提供するリモート MCP (Model Context Protocol) サーバー
    ```
    ※ Tool calling対応モデル（Qwen2.5, Llama-3.1, Mistral等）を推奨します。
 
-2. **NanoKVM Go**:
-   - ターゲットPCに接続し、NanoKVM Go のWeb管理画面を開きます。
-   - **Settings** > **MCP** を開き、MCPスイッチを **ON** にします。
-   - 画面上に表示された `Endpoint` (例: `https://<NanoKVMのIP>/api/mcp` ※NanoKVM本体のOLEDディスプレイまたはルーターのDHCP割当一覧、Web管理画面で確認したIP) と `API Key` を確認します。
+2. **NanoKVM Go (MCP サービスの有効化)**:
+   - ブラウザで NanoKVM Go のWeb管理画面（`https://<NanoKVMのIP>/#/`）を開きます。
+     *(※ IPアドレスはNanoKVM本体のOLEDディスプレイまたはルーターのDHCP割当一覧で確認できます)*
+   - 左側メニューの **「設定」**（歯車）を開き、**「AI」** タブを選択します。
+   - **「MCP サービス」** のトグルスイッチを **ON** にします。
+   - 画面に表示される **「エンドポイント」**（`https://<NanoKVMのIP>/api/mcp`）と **「API キー」** を確認・コピーします。
 
 ---
 
@@ -148,8 +150,8 @@ GITHUB_TOKEN="ghp_xxx" npm run release
    - **エンドポイント URL**: 例 `http://192.168.1.100:8080` または `http://localhost:8080`
    - **接続テスト / モデル一覧更新**: クリックして利用可能なモデルを取得
 3. **NanoKVM Go Remote MCP 設定**:
-   - **MCP エンドポイント URL**: NanoKVM Go の画面に表示されたURL (例: `https://<NanoKVMのIP>/api/mcp`)
-   - **API Key**: NanoKVM Web画面で確認した API Key を入力
+   - **MCP エンドポイント URL**: 上記「AI」タブに表示されたURL (例: `https://<NanoKVMのIP>/api/mcp`)
+   - **API Key**: 上記「AI」タブに表示された API キーを入力
    - **自己署名証明書 / 証明書検証エラーを無視する**: チェック（ON）
    - **NanoKVM MCP 接続テスト**: クリックして接続とツール取得を確認
 4. **設定を保存** をクリックします。

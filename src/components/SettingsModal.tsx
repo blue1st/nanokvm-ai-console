@@ -14,6 +14,7 @@ import {
   Check,
   Images,
   Trash2,
+  Info,
 } from 'lucide-react';
 import type { AppConfig } from '../types';
 
@@ -331,6 +332,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <h3 className="text-sm font-semibold text-slate-200">
                 2. NanoKVM Go Remote MCP 設定
               </h3>
+            </div>
+
+            {/* Guide Box for MCP enablement in Web GUI */}
+            <div className="p-3 bg-purple-950/40 border border-purple-800/60 rounded-lg text-xs space-y-1.5 text-purple-200">
+              <div className="font-semibold flex items-center gap-1.5 text-purple-300">
+                <Info className="w-4 h-4 shrink-0 text-purple-400" />
+                <span>NanoKVM Go 側でのMCP有効化・キー確認手順:</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-slate-300 text-[11px] leading-relaxed pl-1">
+                <li>ブラウザで NanoKVM Go のWeb管理画面（<code className="text-purple-300">https://&lt;NanoKVMのIP&gt;/#/</code>）を開きます。</li>
+                <li>左メニューの <strong>「設定」</strong> を開き、<strong>「AI」</strong> タブを選択します。</li>
+                <li><strong>「MCP サービス」</strong> のスイッチを <strong>ON</strong> にします。</li>
+                <li>表示された <strong>「エンドポイント」</strong> と <strong>「API キー」</strong> をコピーして下記に入力してください。</li>
+              </ol>
             </div>
 
             <div className="space-y-4">
