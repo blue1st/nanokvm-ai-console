@@ -15,8 +15,9 @@ import {
   Images,
   Trash2,
   Info,
+  ExternalLink,
 } from 'lucide-react';
-import type { AppConfig } from '../types';
+import type { AppConfig, UpdateCheckResult } from '../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -48,10 +49,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  const [appVersion, setAppVersion] = useState<string>('');
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+
   const handleCopySnippet = (key: string, text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 2500);
+  };
+
+  const handleCheckUpdate = async () => {
+    if (!window.api) return;
+    setIsCheckingUpdate(true);
+    try {
+      const res = await window.api.checkUpdate();
+      setUpdateResult(res);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setUpdateResult({
+        currentVersion: appVersion || '1.0.1',
+        latestVersion: appVersion || '1.0.1',
+        hasUpdate: false,
+        releaseUrl: 'https://github.com/blue1st/nanokvm-ai-console/releases',
+        error: msg,
+      });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleOpenExternal = (url: string) => {
+    if (window.api) {
+      window.api.openExternal(url);
+    } else {
+      window.open(url, '_blank');
+    }
   };
 
   useEffect(() => {
@@ -60,6 +93,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setMcpTestResult(null);
 
       if (window.api) {
+        window.api.getVersion().then((v: string) => {
+          setAppVersion(v);
+        }).catch(() => {});
+
         window.api.getConfig().then((cfg: AppConfig) => {
           setConfig(cfg);
           window.api.getLlamaModels(cfg.llama.baseUrl, cfg.llama.apiKey).then((models: string[]) => {
@@ -620,10 +657,137 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
+          {/* Section 4: App Info & Updates */}
+          <div className="p-4 rounded-lg bg-slate-800/40 border border-slate-800 space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-700/60 pb-2">
+              <Info className="w-5 h-5 text-indigo-400" />
+              <h3 className="text-sm font-semibold text-slate-200">
+                4. アプリ情報 &amp; アップデート
+              </h3>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-slate-950/60 border border-slate-800/80">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-200">NanoKVM AI Console</span>
+                  <span className="text-xs font-mono px-2 py-0.5 rounded bg-blue-950/80 border border-blue-800/60 text-blue-300">
+                    v{appVersion || '1.0.1'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Remote MCP client &amp; Vision-Language Model agent for Sipeed NanoKVM
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleOpenExternal('https://github.com/blue1st/nanokvm-ai-console')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                  <span>GitHub リポジトリ</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCheckUpdate}
+                  disabled={isCheckingUpdate}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-xs font-medium transition cursor-pointer shadow-sm shadow-indigo-500/20 disabled:opacity-60"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                  <span>{isCheckingUpdate ? '確認中...' : '更新を確認'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Update Result Display */}
+            {updateResult && (
+              <div
+                className={`p-3 rounded-lg border text-xs leading-relaxed space-y-2 ${
+                  updateResult.hasUpdate
+                    ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-200'
+                    : updateResult.error
+                    ? 'bg-amber-950/40 border-amber-700/60 text-amber-200'
+                    : 'bg-blue-950/40 border-blue-700/60 text-blue-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 font-medium">
+                    {updateResult.hasUpdate ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>新バージョン v{updateResult.latestVersion} が利用可能です！</span>
+                      </>
+                    ) : updateResult.error ? (
+                      <>
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>更新の確認に失敗しました: {updateResult.error}</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
+                        <span>お使いのバージョン (v{updateResult.currentVersion}) は最新です。</span>
+                      </>
+                    )}
+                  </div>
+
+                  {updateResult.hasUpdate && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenExternal(updateResult.releaseUrl)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition cursor-pointer shrink-0"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>リリース詳細・ダウンロード</span>
+                    </button>
+                  )}
+                </div>
+
+                {updateResult.hasUpdate && (
+                  <div className="pt-2 border-t border-emerald-800/40 text-[11px] text-emerald-300/90 space-y-1">
+                    <p className="font-mono">
+                      Homebrew でアップデートする場合:
+                    </p>
+                    <div className="flex items-center justify-between bg-slate-950/80 px-2.5 py-1.5 rounded border border-emerald-800/40 font-mono text-[11px] text-emerald-200">
+                      <code>brew update &amp;&amp; brew upgrade --cask blue1st/taps/nanokvm-ai-console</code>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCopySnippet(
+                            'brewUpgrade',
+                            'brew update && brew upgrade --cask blue1st/taps/nanokvm-ai-console'
+                          )
+                        }
+                        className="ml-2 text-slate-400 hover:text-white"
+                        title="コマンドをコピー"
+                      >
+                        {copiedKey === 'brewUpgrade' ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Footer buttons */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-800">
             <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-400 font-mono">v1.0.0</span>
+              <span className="text-xs text-slate-400 font-mono">v{appVersion || '1.0.1'}</span>
+              <button
+                type="button"
+                onClick={() => handleOpenExternal('https://github.com/blue1st/nanokvm-ai-console')}
+                className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 transition"
+                title="GitHub リポジトリを開く"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>GitHub</span>
+              </button>
               {onClearHistory && (
                 <button
                   type="button"
@@ -631,7 +795,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onClearHistory();
                     onClose();
                   }}
-                  className="flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300 hover:underline px-2 py-1 rounded transition"
+                  className="flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300 hover:underline px-2 py-1 rounded transition ml-2"
                   title="現在のチャット会話履歴を全消去します"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

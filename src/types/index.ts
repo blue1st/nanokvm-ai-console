@@ -156,3 +156,13 @@ export interface ScheduledJob {
     error?: string;
   };
 }
+
+export interface UpdateCheckResult {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  releaseUrl: string;
+  releaseNotes?: string;
+  publishedAt?: string;
+  error?: string;
+}

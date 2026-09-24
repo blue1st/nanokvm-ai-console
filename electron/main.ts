@@ -8,7 +8,14 @@ import { fileURLToPath } from 'node:url';
 import { ConfigStore } from './store';
 import { JobStore } from './job-store';
 import { SchedulerEngine } from './scheduler-engine';
-import type { AppConfig, ChatMessage, ConnectionStatus, MCPTool, ScheduledJob } from '../src/types';
+import type {
+  AppConfig,
+  ChatMessage,
+  ConnectionStatus,
+  MCPTool,
+  ScheduledJob,
+  UpdateCheckResult,
+} from '../src/types';
 
 function findSystemNodePath(): string {
   try {
@@ -464,6 +471,71 @@ ipcMain.handle(
 ipcMain.handle('app:openExternal', async (_, targetUrl: string) => {
   if (targetUrl && (targetUrl.startsWith('http://') || targetUrl.startsWith('https://'))) {
     await shell.openExternal(targetUrl);
+  }
+});
+
+function compareSemver(v1: string, v2: string): number {
+  const parse = (v: string) => v.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const p1 = parse(v1);
+  const p2 = parse(v2);
+  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+    const num1 = p1[i] || 0;
+    const num2 = p2[i] || 0;
+    if (num1 > num2) return 1;
+    if (num1 < num2) return -1;
+  }
+  return 0;
+}
+
+ipcMain.handle('app:getVersion', () => {
+  return app.getVersion();
+});
+
+ipcMain.handle('app:checkUpdate', async (): Promise<UpdateCheckResult> => {
+  const currentVersion = app.getVersion();
+  const repoUrl = 'https://api.github.com/repos/blue1st/nanokvm-ai-console/releases/latest';
+  try {
+    const res = await fetch(repoUrl, {
+      headers: {
+        'User-Agent': `NanoKVM-AI-Console/${currentVersion}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        return {
+          currentVersion,
+          latestVersion: currentVersion,
+          hasUpdate: false,
+          releaseUrl: 'https://github.com/blue1st/nanokvm-ai-console/releases',
+        };
+      }
+      throw new Error(`GitHub API returned status ${res.status}`);
+    }
+
+    const data: any = await res.json();
+    const latestVersion = (data.tag_name || '').replace(/^v/, '');
+    const releaseUrl = data.html_url || 'https://github.com/blue1st/nanokvm-ai-console/releases';
+    const hasUpdate = latestVersion ? compareSemver(latestVersion, currentVersion) > 0 : false;
+
+    return {
+      currentVersion,
+      latestVersion: latestVersion || currentVersion,
+      hasUpdate,
+      releaseUrl,
+      releaseNotes: data.body || '',
+      publishedAt: data.published_at,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      currentVersion,
+      latestVersion: currentVersion,
+      hasUpdate: false,
+      releaseUrl: 'https://github.com/blue1st/nanokvm-ai-console/releases',
+      error: msg,
+    };
   }
 });
 

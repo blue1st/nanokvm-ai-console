@@ -8,6 +8,8 @@ import {
   Shield,
   ShieldCheck,
   Clock,
+  ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import { StatusBadge } from './components/StatusBadge';
 import { SettingsModal } from './components/SettingsModal';
@@ -26,6 +28,7 @@ import type {
   ToolCallItem,
   ScreenshotHistoryItem,
   ScheduledJob,
+  UpdateCheckResult,
 } from './types';
 
 export const App: React.FC = () => {
@@ -37,6 +40,11 @@ export const App: React.FC = () => {
   });
   const [mcpTools, setMcpTools] = useState<MCPTool[]>([]);
   const [config, setConfig] = useState<AppConfig | null>(null);
+
+  // App version and updates
+  const [appVersion, setAppVersion] = useState<string>('');
+  const [hasUpdate, setHasUpdate] = useState(false);
+  const [latestVersion, setLatestVersion] = useState('');
 
   // UI state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -79,6 +87,21 @@ export const App: React.FC = () => {
   useEffect(() => {
     refreshStatus();
     const interval = setInterval(refreshStatus, 8000);
+
+    if (window.api) {
+      window.api.getVersion().then((v: string) => {
+        setAppVersion(v);
+      }).catch(() => {});
+
+      // Check update in background
+      window.api.checkUpdate().then((res: UpdateCheckResult) => {
+        if (res.hasUpdate) {
+          setHasUpdate(true);
+          setLatestVersion(res.latestVersion);
+        }
+      }).catch(() => {});
+    }
+
     return () => clearInterval(interval);
   }, []);
 
@@ -423,12 +446,45 @@ export const App: React.FC = () => {
             <MonitorPlay className="w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-sm font-semibold text-white tracking-tight leading-none">
-              NanoKVM AI Console
-            </h1>
-            <span className="text-[10px] text-slate-400 font-mono">
-              Remote MCP &amp; LLM Agent
-            </span>
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-sm font-semibold text-white tracking-tight leading-none">
+                NanoKVM AI Console
+              </h1>
+              {appVersion && (
+                <span className="text-[10px] text-slate-400 font-mono bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60 leading-none">
+                  v{appVersion}
+                </span>
+              )}
+              {hasUpdate && (
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="flex items-center gap-1 text-[10px] text-amber-300 bg-amber-950/80 border border-amber-600/70 px-1.5 py-0.5 rounded-full font-medium hover:bg-amber-900 transition animate-pulse cursor-pointer"
+                  title={`新バージョン v${latestVersion} が利用可能です。クリックして設定画面を開く`}
+                >
+                  <Sparkles className="w-2.5 h-2.5" />
+                  <span>v{latestVersion} 更新あり</span>
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[10px] text-slate-400 font-mono">
+                Remote MCP &amp; LLM Agent
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  window.api
+                    ? window.api.openExternal('https://github.com/blue1st/nanokvm-ai-console')
+                    : window.open('https://github.com/blue1st/nanokvm-ai-console', '_blank')
+                }
+                className="text-[10px] text-slate-500 hover:text-slate-300 flex items-center gap-0.5 transition cursor-pointer"
+                title="GitHub リポジトリ (https://github.com/blue1st/nanokvm-ai-console)"
+              >
+                <ExternalLink className="w-2.5 h-2.5" />
+                <span>GitHub</span>
+              </button>
+            </div>
           </div>
         </div>
 
