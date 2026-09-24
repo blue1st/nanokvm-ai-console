@@ -104,7 +104,6 @@ jobs:
             release/*.AppImage
             release/*.tar.gz
             release/SHA256SUMS.txt
-            Casks/nanokvm-ai-console.rb
           generate_release_notes: true
 
   sync-tap:
@@ -126,7 +125,7 @@ jobs:
           TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN || secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
           if [ -z "$TAP_TOKEN" ]; then
-            echo "::notice ::TAP_GITHUB_TOKEN or PERSONAL_ACCESS_TOKEN not set. Skipping automatic tap push. Cask formula is available in release assets."
+            echo "::notice ::TAP_GITHUB_TOKEN not configured in repository secrets. Skipping automatic push to blue1st/homebrew-taps."
             exit 0
           fi
 
@@ -147,3 +146,8 @@ jobs:
             git push origin main
             echo "Successfully updated blue1st/homebrew-taps!"
           fi
+
+      - name: Attach updated Cask formula to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Casks/nanokvm-ai-console.rb
