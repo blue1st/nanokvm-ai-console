@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="build/icon.png" width="128" height="128" alt="NanoKVM AI Console Icon">
+</p>
+
 # NanoKVM AI Console
 
 NanoKVM Go が提供するリモート MCP (Model Context Protocol) サーバーと、ローカルネットワーク上の llama.cpp server (OpenAI互換API) を接続し、AIとの自然な対話形式でターゲットPCの画面認識や遠隔操作を行えるデスクトップAIコンソールです。
