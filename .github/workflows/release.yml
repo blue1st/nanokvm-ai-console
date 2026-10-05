@@ -120,9 +120,18 @@ jobs:
           name: cask-formula
           path: Casks/
 
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.TAP_APP_ID }}
+          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
+          owner: blue1st
+          repositories: homebrew-taps
+
       - name: Sync Cask to blue1st/homebrew-taps
         env:
-          TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN || secrets.PERSONAL_ACCESS_TOKEN }}
+          TAP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           if [ -z "$TAP_TOKEN" ]; then
             echo "::notice ::TAP_GITHUB_TOKEN not configured in repository secrets. Skipping automatic push to blue1st/homebrew-taps."
