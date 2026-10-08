@@ -17,10 +17,10 @@ cask "nanokvm-ai-console" do
 
   app "NanoKVM AI Console.app"
 
-  postflight_steps do
-    run "/usr/bin/xattr", args: ["-cr", "{{appdir}}/NanoKVM AI Console.app"]
-    run "/usr/bin/codesign", args: ["--force", "--deep", "--sign", "-", "{{appdir}}/NanoKVM AI Console.app"]
-  end
+  caveats <<~EOS
+    NanoKVM AI Console is not notarized. If macOS blocks it from running, execute:
+      xattr -cr "/Applications/NanoKVM AI Console.app"
+  EOS
 
   zap trash: [
     "~/Library/Application Support/nanokvm-ai-console",
