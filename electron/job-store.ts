@@ -61,7 +61,13 @@ export class JobStore {
 
   public updateJobResult(
     id: string,
-    result: { success: boolean; summary: string; matched?: boolean; error?: string },
+    result: {
+      success: boolean;
+      summary: string;
+      matched?: boolean;
+      error?: string;
+      usedSystemOne?: boolean;
+    },
     nextRunAt?: number
   ): void {
     const job = this.jobs.find((j) => j.id === id);

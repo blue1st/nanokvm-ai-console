@@ -18,8 +18,20 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Zap,
 } from 'lucide-react';
-import type { AppConfig, UpdateCheckResult } from '../types';
+import type { AppConfig, SystemOneConfig, UpdateCheckResult } from '../types';
+
+const DEFAULT_SYSTEM_ONE: SystemOneConfig = {
+  enabled: false,
+  baseUrl: '',
+  model: '',
+  apiKey: '',
+  confidenceThreshold: 0.7,
+  useForWatchdog: true,
+  useForStepVerification: true,
+  useForSmartApproval: true,
+};
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -38,6 +50,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isTestingLlama, setIsTestingLlama] = useState(false);
   const [llamaTestResult, setLlamaTestResult] = useState<{
+    success?: boolean;
+    message?: string;
+  } | null>(null);
+
+  const [isTestingSystemOne, setIsTestingSystemOne] = useState(false);
+  const [systemOneTestResult, setSystemOneTestResult] = useState<{
     success?: boolean;
     message?: string;
   } | null>(null);
@@ -96,6 +114,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setLlamaTestResult(null);
+      setSystemOneTestResult(null);
       setMcpTestResult(null);
 
       if (window.api) {
@@ -108,7 +127,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         }).catch(() => {});
 
         window.api.getConfig().then((cfg: AppConfig) => {
-          setConfig(cfg);
+          setConfig({
+            ...cfg,
+            systemOne: { ...DEFAULT_SYSTEM_ONE, ...(cfg.systemOne || {}) },
+          });
           window.api.getLlamaModels(cfg.llama.baseUrl, cfg.llama.apiKey).then((models: string[]) => {
             setAvailableModels(models);
           }).catch(() => {});
@@ -133,6 +155,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       </div>
     );
   }
+
+  const sysOne: SystemOneConfig = {
+    ...DEFAULT_SYSTEM_ONE,
+    ...(config.systemOne || {}),
+  };
+
+  const updateSystemOne = (patch: Partial<SystemOneConfig>) => {
+    setConfig({
+      ...config,
+      systemOne: {
+        ...sysOne,
+        ...patch,
+      },
+    });
+  };
 
   const handleTestLlama = async () => {
     setIsTestingLlama(true);
@@ -171,6 +208,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
     } finally {
       setIsTestingLlama(false);
+    }
+  };
+
+  const handleTestSystemOne = async () => {
+    setIsTestingSystemOne(true);
+    setSystemOneTestResult(null);
+    try {
+      const res = await window.api.testSystemOne({
+        baseUrl: sysOne.baseUrl || config.llama.baseUrl,
+        apiKey: sysOne.apiKey || config.llama.apiKey,
+        model: sysOne.model || undefined,
+      });
+      if (res.success) {
+        const probPct =
+          typeof res.sampleProbability === 'number'
+            ? `${Math.round(res.sampleProbability * 100)}%`
+            : 'N/A';
+        setSystemOneTestResult({
+          success: true,
+          message: `⚡ /v1/systemone 応答成功！ (${res.durationMs}ms | モデル: ${res.model} | テスト判定: noul=${probPct}, choice=${res.sampleChoice || 'OK'})`,
+        });
+      } else {
+        setSystemOneTestResult({
+          success: false,
+          message: res.error || '/v1/systemone エンドポイントのテストに失敗しました',
+        });
+      }
+    } catch (e: unknown) {
+      setSystemOneTestResult({
+        success: false,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setIsTestingSystemOne(false);
     }
   };
 
@@ -368,6 +439,217 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <AlertCircle className="w-4 h-4 shrink-0" />
                 )}
                 <span>{llamaTestResult.message}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Section 1-B: Decision Models (/v1/systemone) Optional Feature */}
+          <div className="p-4 rounded-lg bg-cyan-950/20 border border-cyan-800/50 space-y-4">
+            <div className="flex items-center justify-between border-b border-cyan-800/40 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-cyan-400" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-cyan-100">
+                      1-B. Decision Model 連携 (/v1/systemone オプション)
+                    </h3>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-900/60 border border-cyan-600/50 text-cyan-200">
+                      Single-Pass Fast Eval
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    llama.cpp の <code className="text-cyan-300">/v1/systemone</code> エンドポイントを利用し、条件監視・操作リスク判定・ステップ検証を1回のForward Passで超高速に実行します。
+                  </p>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={sysOne.enabled}
+                  onChange={(e) => updateSystemOne({ enabled: e.target.checked })}
+                  className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 w-4 h-4 cursor-pointer"
+                />
+                <span className="text-xs font-semibold text-cyan-200">有効化</span>
+              </label>
+            </div>
+
+            {sysOne.enabled && (
+              <div className="space-y-4 pt-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">
+                      専用サーバー URL (空欄時は 1. のURLを共用)
+                    </label>
+                    <input
+                      type="text"
+                      value={sysOne.baseUrl}
+                      onChange={(e) => updateSystemOne({ baseUrl: e.target.value })}
+                      placeholder={config.llama.baseUrl || 'http://localhost:8080'}
+                      className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-700 rounded-md text-slate-100 focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">
+                      API Key (空欄時は 1. のキーを共用)
+                    </label>
+                    <input
+                      type="password"
+                      value={sysOne.apiKey}
+                      onChange={(e) => updateSystemOne({ apiKey: e.target.value })}
+                      placeholder="空欄可"
+                      className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-700 rounded-md text-slate-100 focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-slate-300">
+                        Decision Model 名 (ルーターモード用 / 単一モデル起動時は空欄可)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleTestSystemOne}
+                        disabled={isTestingSystemOne}
+                        className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
+                      >
+                        <RefreshCw
+                          className={`w-3 h-3 ${isTestingSystemOne ? 'animate-spin' : ''}`}
+                        />
+                        <span>/v1/systemone 疎通・判定テスト</span>
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={sysOne.model}
+                      onChange={(e) => updateSystemOne({ model: e.target.value })}
+                      placeholder="例: ggml-org/OpenJev-GGUF (画像対応), ggml-org/Kev-4B-GGUF, ggml-org/Julia-1-GGUF"
+                      className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-700 rounded-md text-slate-100 focus:outline-none focus:border-cyan-500 font-mono"
+                    />
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[10px] text-slate-400">プリセット:</span>
+                      {[
+                        { label: 'OpenJev (27B・画像対応)', val: 'ggml-org/OpenJev-GGUF' },
+                        { label: 'Clef (27B・画像対応)', val: 'ggml-org/Clef-GGUF' },
+                        { label: 'Kev-4B (4B・高速)', val: 'ggml-org/Kev-4B-GGUF' },
+                        { label: 'Julia-1 (144M・超軽量)', val: 'ggml-org/Julia-1-GGUF' },
+                      ].map((p) => (
+                        <button
+                          key={p.val}
+                          type="button"
+                          onClick={() => updateSystemOne({ model: p.val })}
+                          className="text-[10px] px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700 transition cursor-pointer font-mono"
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Confidence Threshold */}
+                  <div className="space-y-1.5 md:col-span-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300">
+                        判定確率カットオフ閾値 (Confidence Cutoff)
+                      </span>
+                      <span className="font-mono text-cyan-300 font-semibold">
+                        {Math.round((sysOne.confidenceThreshold || 0.7) * 100)}% ({(sysOne.confidenceThreshold || 0.7).toFixed(2)})
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.3}
+                      max={0.95}
+                      step={0.05}
+                      value={sysOne.confidenceThreshold || 0.7}
+                      onChange={(e) =>
+                        updateSystemOne({ confidenceThreshold: parseFloat(e.target.value) })
+                      }
+                      className="w-full accent-cyan-500 cursor-pointer"
+                    />
+                    <p className="text-[11px] text-slate-400">
+                      <code className="text-cyan-300">noul</code> (Yes/No確率) がこの閾値以上のときに「条件合致」または「要承認」と判定します。
+                    </p>
+                  </div>
+                </div>
+
+                {/* Feature Checkboxes */}
+                <div className="space-y-2.5 pt-2 border-t border-cyan-900/40">
+                  <div className="text-xs font-semibold text-cyan-200">
+                    活用する機能 (ONにした項目で /v1/systemone が動作し、UI上にバッジ表示されます)
+                  </div>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sysOne.useForWatchdog}
+                      onChange={(e) => updateSystemOne({ useForWatchdog: e.target.checked })}
+                      className="mt-0.5 rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                    />
+                    <div>
+                      <span className="text-xs font-medium text-slate-200">
+                        ① Watchdog 高速条件判定 &amp; 複数ジョブ一括バッチ監視
+                      </span>
+                      <p className="text-[11px] text-slate-400">
+                        定期監視タスクの条件判定を1パスで高速評価します。複数タスクが同時刻に到来した場合は1回のリクエストにまとめて一括判定します（失敗時は通常のChat APIへ自動フォールバック）。
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sysOne.useForSmartApproval}
+                      onChange={(e) => updateSystemOne({ useForSmartApproval: e.target.checked })}
+                      className="mt-0.5 rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                    />
+                    <div>
+                      <span className="text-xs font-medium text-slate-200">
+                        ② AI スマート承認ガード (ツール実行前のリスク自動スコアリング)
+                      </span>
+                      <p className="text-[11px] text-slate-400">
+                        MCPツール実行直前に危険度スコア（0〜3）と要承認確率を数ミリ秒で判定し、高リスク操作（電源リセットや破壊的入力等）と判定された場合は自動で承認確認を表示します。
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sysOne.useForStepVerification}
+                      onChange={(e) =>
+                        updateSystemOne({ useForStepVerification: e.target.checked })
+                      }
+                      className="mt-0.5 rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                    />
+                    <div>
+                      <span className="text-xs font-medium text-slate-200">
+                        ③ 自律操作ステップ検証 (Step Verification)
+                      </span>
+                      <p className="text-[11px] text-slate-400">
+                        ツール実行直後に「操作が成功したか」「画面がロード中・エラー・入力可能のどれか」を即座に判定し、ツールカードへのバッジ表示とメインLLMへのフィードバックを行います。
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                {systemOneTestResult && (
+                  <div
+                    className={`text-xs p-2.5 rounded-md flex items-center gap-2 ${
+                      systemOneTestResult.success
+                        ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800'
+                        : 'bg-rose-950/60 text-rose-300 border border-rose-800'
+                    }`}
+                  >
+                    {systemOneTestResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                    )}
+                    <span>{systemOneTestResult.message}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

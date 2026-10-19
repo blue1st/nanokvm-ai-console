@@ -1,7 +1,40 @@
 import http from 'node:http';
 import https from 'node:https';
-import type { ChatMessage, ToolCallItem } from '../src/types';
+import type {
+  ChatMessage,
+  ToolCallItem,
+  SystemOneConfig,
+  SystemOneRiskMeta,
+  SystemOneVerifyMeta,
+  SystemOneWatchdogMeta,
+  SystemOneTestResult,
+} from '../src/types';
 import type { NanoKVMMCPClient } from './mcp-client';
+
+export interface SystemOneQuestion {
+  type: 'choice' | 'score' | 'noul';
+  instructions: string;
+  criteria?: Record<string, string | null> | string[];
+}
+
+export interface SystemOneAnswer {
+  type: 'choice' | 'score' | 'noul';
+  choice?: string;
+  score?: number;
+  noul?: number;
+  legend?: Record<string, string>;
+  probabilities?: Record<string, number>;
+  confidence?: number;
+}
+
+export interface SystemOneRawResponse {
+  model?: string;
+  answers?: Record<string, SystemOneAnswer>;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+}
 
 export interface StreamEvent {
   type:
@@ -456,14 +489,22 @@ export class LlamaClient {
     this.currentApiKey = apiKey || 'dummy-llama-cpp-key';
   }
 
+  private resolveApiBase(customBaseUrl?: string): string {
+    const raw = (customBaseUrl && customBaseUrl.trim()) ? customBaseUrl.trim() : this.currentBaseUrl;
+    const cleanUrl = raw.replace(/\/+$/, '');
+    return cleanUrl.endsWith('/v1') ? cleanUrl : `${cleanUrl}/v1`;
+  }
+
+  private resolveApiKey(customApiKey?: string): string {
+    return (customApiKey && customApiKey.trim()) ? customApiKey.trim() : this.currentApiKey;
+  }
+
   /**
    * Fetch available models from llama.cpp server
    */
   public async getModels(baseUrl?: string, apiKey?: string): Promise<string[]> {
-    const urlToUse = baseUrl || this.currentBaseUrl;
-    const keyToUse = apiKey || this.currentApiKey || 'dummy-llama-cpp-key';
-    const cleanUrl = urlToUse.replace(/\/+$/, '');
-    const apiBase = cleanUrl.endsWith('/v1') ? cleanUrl : `${cleanUrl}/v1`;
+    const apiBase = this.resolveApiBase(baseUrl);
+    const keyToUse = this.resolveApiKey(apiKey) || 'dummy-llama-cpp-key';
 
     const headers: Record<string, string> = {};
     if (keyToUse) {
@@ -506,6 +547,308 @@ export class LlamaClient {
   }
 
   /**
+   * Call llama.cpp /v1/systemone Decision Models API
+   */
+  public async callSystemOne(params: {
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+    state: unknown;
+    images?: string[];
+    questions: Record<string, SystemOneQuestion>;
+    timeoutMs?: number;
+    allowTextFallbackOnVisionError?: boolean;
+  }): Promise<SystemOneRawResponse & { durationMs: number }> {
+    const apiBase = this.resolveApiBase(params.baseUrl);
+    const keyToUse = this.resolveApiKey(params.apiKey);
+    const endpoint = `${apiBase}/systemone`;
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (keyToUse) {
+      headers['Authorization'] = `Bearer ${keyToUse}`;
+    }
+
+    const executeRequest = async (withImages: boolean) => {
+      const startTime = Date.now();
+      const payload: Record<string, unknown> = {
+        state: params.state,
+        questions: params.questions,
+      };
+      if (params.model && params.model.trim()) {
+        payload.model = params.model.trim();
+      }
+      if (withImages && params.images && params.images.length > 0) {
+        payload.images = params.images;
+      }
+
+      const res = await httpRequest(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        timeout: params.timeoutMs || 30000,
+      });
+
+      const durationMs = Date.now() - startTime;
+      if (res.status >= 400) {
+        throw new Error(`HTTP ${res.status}: ${res.text}`);
+      }
+
+      const parsed = JSON.parse(res.text) as SystemOneRawResponse;
+      if (!parsed || typeof parsed !== 'object' || !parsed.answers) {
+        throw new Error('Invalid /v1/systemone response: missing answers object');
+      }
+      return {
+        ...parsed,
+        durationMs,
+      };
+    };
+
+    try {
+      return await executeRequest(true);
+    } catch (err) {
+      if (
+        params.allowTextFallbackOnVisionError &&
+        params.images &&
+        params.images.length > 0
+      ) {
+        console.warn('[SystemOne] Vision payload failed, retrying text-only state:', err);
+        return await executeRequest(false);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Test /v1/systemone endpoint availability and measure latency
+   */
+  public async testSystemOne(params: {
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+  }): Promise<SystemOneTestResult> {
+    try {
+      const res = await this.callSystemOne({
+        baseUrl: params.baseUrl,
+        apiKey: params.apiKey,
+        model: params.model,
+        state:
+          'NanoKVM System Status: Target machine display is active at 1920x1080 showing OS login screen.',
+        questions: {
+          ready: {
+            type: 'noul',
+            instructions: 'Is the target display active and showing a login screen?',
+          },
+          screen_type: {
+            type: 'choice',
+            instructions: 'What type of screen is shown?',
+            criteria: {
+              login_screen: 'OS login or authentication prompt',
+              bsod_crash: 'blue screen of death or kernel panic',
+              bios_setup: 'BIOS or UEFI firmware settings',
+            },
+          },
+        },
+        timeoutMs: 15000,
+      });
+
+      const prob = res.answers?.ready?.noul;
+      const choice = res.answers?.screen_type?.choice;
+
+      return {
+        success: true,
+        model: res.model || params.model || 'default',
+        durationMs: res.durationMs,
+        sampleProbability: typeof prob === 'number' ? prob : undefined,
+        sampleChoice: choice,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        error: msg,
+      };
+    }
+  }
+
+  /**
+   * Evaluate tool call risk via /v1/systemone before execution (Idea 3: Smart Approval Guard)
+   */
+  public async evaluateToolRiskWithSystemOne(params: {
+    systemOne: SystemOneConfig;
+    toolName: string;
+    toolArgs: Record<string, unknown>;
+    userContext: string;
+  }): Promise<SystemOneRiskMeta | null> {
+    const { systemOne, toolName, toolArgs, userContext } = params;
+    if (!systemOne.enabled || !systemOne.useForSmartApproval) {
+      return null;
+    }
+
+    try {
+      const stateText = `User instruction: ${userContext || '(autonomous step)'}\nProposed MCP Tool Call: ${toolName}(${JSON.stringify(toolArgs)})`;
+      const res = await this.callSystemOne({
+        baseUrl: systemOne.baseUrl,
+        apiKey: systemOne.apiKey,
+        model: systemOne.model,
+        state: stateText,
+        questions: {
+          needs_approval: {
+            type: 'noul',
+            instructions:
+              'Could this KVM action cause system reboot, power off, data loss, security risk, or destructive change that requires human confirmation before execution?',
+          },
+          risk_level: {
+            type: 'score',
+            instructions: 'How risky or destructive is this KVM operation?',
+            criteria: [
+              'safe read-only screen capture or status check',
+              'benign mouse move or routine UI click',
+              'keyboard text input or system setting modification',
+              'destructive hardware power off, reset, reboot, or critical command',
+            ],
+          },
+          category: {
+            type: 'choice',
+            instructions: 'Which operation category best describes this tool call?',
+            criteria: {
+              screen_capture: 'capturing screenshot or inspecting display',
+              pointer_action: 'mouse move, click, double click, drag, scroll',
+              keyboard_input: 'typing text, pressing Enter, or key combinations',
+              power_control: 'ATX power button, hardware reset, force power off',
+              other: 'other utility action',
+            },
+          },
+        },
+        timeoutMs: 10000,
+      });
+
+      const needsApprovalProb = res.answers?.needs_approval?.noul ?? 0;
+      const riskScore = res.answers?.risk_level?.score ?? 0;
+      const category = res.answers?.category?.choice;
+      const threshold = systemOne.confidenceThreshold || 0.7;
+
+      const riskLabels = ['安全 (Read-only)', '低リスク (UI操作)', '中リスク (入力/変更)', '高リスク (電源/重要操作)'];
+      const riskIdx = Math.min(3, Math.max(0, Math.round(riskScore)));
+      const riskLabel = riskLabels[riskIdx];
+
+      const triggeredApproval = needsApprovalProb >= threshold || riskScore >= 2.2;
+
+      return {
+        used: true,
+        model: res.model || systemOne.model || 'default',
+        durationMs: res.durationMs,
+        riskScore,
+        riskLabel,
+        needsApprovalProb,
+        category,
+        triggeredApproval,
+      };
+    } catch (err) {
+      console.warn('[SystemOne] Tool risk evaluation failed, continuing with standard flow:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Verify tool execution step result via /v1/systemone (Idea 2: Step Verification)
+   */
+  public async verifyToolStepWithSystemOne(params: {
+    systemOne: SystemOneConfig;
+    toolName: string;
+    toolArgs: Record<string, unknown>;
+    resultText?: string;
+    resultImage?: string;
+    isError?: boolean;
+    userContext: string;
+    downscaleImage?: (dataUrl: string) => Promise<string>;
+  }): Promise<SystemOneVerifyMeta | null> {
+    const {
+      systemOne,
+      toolName,
+      toolArgs,
+      resultText,
+      resultImage,
+      isError,
+      userContext,
+      downscaleImage,
+    } = params;
+    if (!systemOne.enabled || !systemOne.useForStepVerification) {
+      return null;
+    }
+
+    try {
+      let images: string[] | undefined;
+      if (resultImage) {
+        let imgToUse = resultImage;
+        if (downscaleImage) {
+          try {
+            imgToUse = await downscaleImage(resultImage);
+          } catch {
+            // fallback
+          }
+        }
+        images = [imgToUse];
+      }
+
+      const stateText = [
+        `User goal: ${userContext || '(autonomous operation)'}`,
+        `Executed MCP tool: ${toolName}(${JSON.stringify(toolArgs)})`,
+        `Tool status: ${isError ? 'ERROR' : 'OK'}`,
+        `Tool output: ${sanitizeToolResultText(resultText).slice(0, 1000)}`,
+      ].join('\n');
+
+      const res = await this.callSystemOne({
+        baseUrl: systemOne.baseUrl,
+        apiKey: systemOne.apiKey,
+        model: systemOne.model,
+        state: stateText,
+        images,
+        allowTextFallbackOnVisionError: true,
+        questions: {
+          step_succeeded: {
+            type: 'noul',
+            instructions:
+              'Did this tool execution succeed without error and produce a valid state toward the user goal?',
+          },
+          screen_state: {
+            type: 'choice',
+            instructions: 'What is the current state of the target system after this tool step?',
+            criteria: {
+              ready_for_next_action: 'system is responsive and ready for the next interaction',
+              loading_or_busy: 'screen is still loading, booting, or waiting for a process',
+              error_or_blocked: 'an error message, crash, or unexpected obstacle is present',
+              goal_completed: 'the requested task or target state has been achieved',
+            },
+          },
+        },
+        timeoutMs: 15000,
+      });
+
+      const succeededProb = res.answers?.step_succeeded?.noul ?? (isError ? 0.1 : 0.85);
+      const screenStateAns = res.answers?.screen_state;
+      const screenState = screenStateAns?.choice || 'ready_for_next_action';
+      const screenStateProb =
+        screenStateAns?.probabilities && screenStateAns.choice
+          ? screenStateAns.probabilities[screenStateAns.choice]
+          : screenStateAns?.confidence;
+
+      return {
+        used: true,
+        model: res.model || systemOne.model || 'default',
+        durationMs: res.durationMs,
+        succeededProb,
+        screenState,
+        screenStateProb,
+      };
+    } catch (err) {
+      console.warn('[SystemOne] Step verification failed, skipping verification metadata:', err);
+      return null;
+    }
+  }
+
+  /**
    * Run chat loop with automatic MCP Tool Calling
    */
   public async streamChat(options: {
@@ -515,6 +858,7 @@ export class LlamaClient {
     temperature: number;
     maxTokens: number;
     timeoutSeconds?: number;
+    systemOne?: SystemOneConfig;
     downscaleImage?: (dataUrl: string) => Promise<string>;
     mcpClient?: NanoKVMMCPClient;
     signal?: AbortSignal;
@@ -529,6 +873,7 @@ export class LlamaClient {
       temperature,
       maxTokens,
       timeoutSeconds,
+      systemOne,
       downscaleImage,
       mcpClient,
       signal,
@@ -542,6 +887,10 @@ export class LlamaClient {
       onEvent({ type: 'error', error: 'llama.cpp client is not initialized.' });
       return;
     }
+
+    // Extract latest user prompt text for SystemOne context
+    const lastUserMessage =
+      [...history].reverse().find((m) => m.role === 'user')?.content || '';
 
     // Prepare OpenAI compatible messages
     const openAiMessages: Array<Record<string, unknown>> = [];
@@ -754,8 +1103,25 @@ export class LlamaClient {
             status: 'running',
           };
 
-          // Step Execution Approval Check
-          if (stepExecutionMode && onRequestApproval) {
+          // Idea 3: Evaluate Tool Risk with /v1/systemone if enabled
+          if (systemOne?.enabled && systemOne.useForSmartApproval) {
+            const riskMeta = await this.evaluateToolRiskWithSystemOne({
+              systemOne,
+              toolName: tcData.name,
+              toolArgs: parsedArgs,
+              userContext: lastUserMessage,
+            });
+            if (riskMeta) {
+              toolCallItem.systemOneRisk = riskMeta;
+            }
+          }
+
+          // Determine if human approval is required (either manual stepExecutionMode OR SystemOne Smart Approval)
+          const shouldRequestApproval =
+            onRequestApproval &&
+            (stepExecutionMode || toolCallItem.systemOneRisk?.triggeredApproval);
+
+          if (shouldRequestApproval) {
             toolCallItem.status = 'waiting_approval';
             onEvent({ type: 'tool_call_waiting_approval', toolCall: toolCallItem });
             const decision = await onRequestApproval(toolCallItem);
@@ -809,6 +1175,23 @@ export class LlamaClient {
             toolCallItem.status = 'failed';
           }
 
+          // Idea 2: Verify step execution via /v1/systemone if enabled
+          if (systemOne?.enabled && systemOne.useForStepVerification) {
+            const verifyMeta = await this.verifyToolStepWithSystemOne({
+              systemOne,
+              toolName: tcData.name,
+              toolArgs: parsedArgs,
+              resultText: toolCallItem.result?.text,
+              resultImage: toolCallItem.result?.image,
+              isError: toolCallItem.result?.isError,
+              userContext: lastUserMessage,
+              downscaleImage,
+            });
+            if (verifyMeta) {
+              toolCallItem.systemOneVerify = verifyMeta;
+            }
+          }
+
           executedCalls.push(toolCallItem);
           onEvent({ type: 'tool_call_complete', toolCall: toolCallItem });
         }
@@ -825,6 +1208,10 @@ export class LlamaClient {
           let contentStr = sanitizeToolResultText(tc.result?.text);
           if (tc.result?.image && !contentStr.includes('[Image captured')) {
             contentStr += '\n[Image captured from NanoKVM: Screenshot is attached]';
+          }
+          if (tc.systemOneVerify?.used) {
+            const pct = Math.round(tc.systemOneVerify.succeededProb * 100);
+            contentStr += `\n[SystemOne Step Verification: step_succeeded=${pct}%, screen_state=${tc.systemOneVerify.screenState}]`;
           }
 
           openAiMessages.push({
@@ -889,6 +1276,7 @@ export class LlamaClient {
 
   /**
    * Evaluate a visual watchdog condition against a captured screen image
+   * Uses /v1/systemone if enabled, with transparent fallback to /v1/chat/completions
    */
   public async evaluateWatchdogCondition(options: {
     imageUrl?: string;
@@ -896,9 +1284,23 @@ export class LlamaClient {
     model: string;
     temperature?: number;
     timeoutSeconds?: number;
+    systemOne?: SystemOneConfig;
     downscaleImage?: (dataUrl: string) => Promise<string>;
-  }): Promise<{ matched: boolean; confidence: number; reason: string }> {
-    const { imageUrl, condition, model, temperature = 0.2, timeoutSeconds = 60, downscaleImage } = options;
+  }): Promise<{
+    matched: boolean;
+    confidence: number;
+    reason: string;
+    systemOne?: SystemOneWatchdogMeta;
+  }> {
+    const {
+      imageUrl,
+      condition,
+      model,
+      temperature = 0.2,
+      timeoutSeconds = 60,
+      systemOne,
+      downscaleImage,
+    } = options;
 
     let processedImageUrl = imageUrl;
     if (imageUrl && downscaleImage) {
@@ -906,6 +1308,85 @@ export class LlamaClient {
         processedImageUrl = await downscaleImage(imageUrl);
       } catch (e) {
         console.warn('[Worker] Downscale before watchdog eval failed, using raw:', e);
+      }
+    }
+
+    // Idea 1: Try /v1/systemone first if enabled for Watchdog
+    if (systemOne?.enabled && systemOne.useForWatchdog) {
+      try {
+        const threshold = systemOne.confidenceThreshold || 0.7;
+        const sysRes = await this.callSystemOne({
+          baseUrl: systemOne.baseUrl,
+          apiKey: systemOne.apiKey,
+          model: systemOne.model || model,
+          state: `Target PC screen captured via NanoKVM. Watchdog condition to verify: "${condition}"`,
+          images: processedImageUrl ? [processedImageUrl] : undefined,
+          questions: {
+            condition_matched: {
+              type: 'noul',
+              instructions: `Does the current screen satisfy this condition: "${condition}"?`,
+            },
+            screen_category: {
+              type: 'choice',
+              instructions: 'What type of screen is currently displayed on the monitor?',
+              criteria: {
+                normal_desktop: 'normal OS desktop or application window',
+                login_or_lock: 'OS login prompt, lock screen, or password input',
+                installer_or_update: 'software installer, progress bar, or update screen',
+                error_or_dialog: 'error popup, warning dialog, or unresponsive application',
+                crash_or_bsod: 'blue screen of death (BSOD), kernel panic, or system crash',
+                bios_or_boot: 'BIOS setup, bootloader, black screen, or no signal',
+              },
+            },
+            severity: {
+              type: 'score',
+              instructions: 'How urgent or critical is the current screen state?',
+              criteria: ['normal', 'informational', 'warning', 'critical'],
+            },
+          },
+          timeoutMs: timeoutSeconds * 1000,
+        });
+
+        const probability = sysRes.answers?.condition_matched?.noul ?? 0;
+        const matched = probability >= threshold;
+        const categoryAns = sysRes.answers?.screen_category;
+        const screenCategory = categoryAns?.choice || 'unknown';
+        const screenCategoryProb =
+          categoryAns?.probabilities && categoryAns.choice
+            ? categoryAns.probabilities[categoryAns.choice]
+            : categoryAns?.confidence;
+        const severityScore = sysRes.answers?.severity?.score ?? 0;
+        const severityLabels = ['正常 (Normal)', '情報 (Info)', '警告 (Warning)', '緊急 (Critical)'];
+        const severityLabel = severityLabels[Math.min(3, Math.max(0, Math.round(severityScore)))];
+
+        const usedModel = sysRes.model || systemOne.model || model || 'default';
+        const reason = `⚡ [/v1/systemone 判定 (${sysRes.durationMs}ms)] 条件合致確率: ${Math.round(
+          probability * 100
+        )}% (閾値: ${Math.round(threshold * 100)}%) | 画面分類: ${screenCategory} (${Math.round(
+          (screenCategoryProb || 0) * 100
+        )}%) | 重要度スコア: ${severityScore.toFixed(2)}/3.0 (${severityLabel})`;
+
+        return {
+          matched,
+          confidence: probability,
+          reason,
+          systemOne: {
+            used: true,
+            model: usedModel,
+            durationMs: sysRes.durationMs,
+            probability,
+            screenCategory,
+            screenCategoryProb,
+            severityScore,
+            severityLabel,
+            batchSize: 1,
+          },
+        };
+      } catch (sysErr) {
+        console.warn(
+          '[SystemOne] Watchdog /v1/systemone evaluation failed, falling back to /v1/chat/completions:',
+          sysErr
+        );
       }
     }
 
@@ -996,5 +1477,127 @@ export class LlamaClient {
       confidence: 0.5,
       reason: content.trim(),
     };
+  }
+
+  /**
+   * Idea 4: Batch evaluate multiple Watchdog jobs in a single /v1/systemone forward pass
+   */
+  public async evaluateWatchdogBatch(options: {
+    imageUrl?: string;
+    items: Array<{ jobId: string; jobName: string; condition: string }>;
+    model: string;
+    timeoutSeconds?: number;
+    systemOne: SystemOneConfig;
+    downscaleImage?: (dataUrl: string) => Promise<string>;
+  }): Promise<
+    Record<
+      string,
+      {
+        matched: boolean;
+        confidence: number;
+        reason: string;
+        systemOne: SystemOneWatchdogMeta;
+      }
+    >
+  > {
+    const { imageUrl, items, model, timeoutSeconds = 60, systemOne, downscaleImage } = options;
+
+    let processedImageUrl = imageUrl;
+    if (imageUrl && downscaleImage) {
+      try {
+        processedImageUrl = await downscaleImage(imageUrl);
+      } catch (e) {
+        console.warn('[Worker] Downscale before batch watchdog eval failed, using raw:', e);
+      }
+    }
+
+    const questions: Record<string, SystemOneQuestion> = {
+      screen_category: {
+        type: 'choice',
+        instructions: 'What type of screen is currently displayed on the monitor?',
+        criteria: {
+          normal_desktop: 'normal OS desktop or application window',
+          login_or_lock: 'OS login prompt, lock screen, or password input',
+          installer_or_update: 'software installer, progress bar, or update screen',
+          error_or_dialog: 'error popup, warning dialog, or unresponsive application',
+          crash_or_bsod: 'blue screen of death (BSOD), kernel panic, or system crash',
+          bios_or_boot: 'BIOS setup, bootloader, black screen, or no signal',
+        },
+      },
+      severity: {
+        type: 'score',
+        instructions: 'How urgent or critical is the current screen state?',
+        criteria: ['normal', 'informational', 'warning', 'critical'],
+      },
+    };
+
+    for (const item of items) {
+      questions[`job_${item.jobId}`] = {
+        type: 'noul',
+        instructions: `Does the current screen satisfy this condition: "${item.condition}"?`,
+      };
+    }
+
+    const sysRes = await this.callSystemOne({
+      baseUrl: systemOne.baseUrl,
+      apiKey: systemOne.apiKey,
+      model: systemOne.model || model,
+      state: `Target PC screen captured via NanoKVM. Evaluating ${items.length} watchdog conditions simultaneously.`,
+      images: processedImageUrl ? [processedImageUrl] : undefined,
+      questions,
+      timeoutMs: timeoutSeconds * 1000,
+    });
+
+    const threshold = systemOne.confidenceThreshold || 0.7;
+    const categoryAns = sysRes.answers?.screen_category;
+    const screenCategory = categoryAns?.choice || 'unknown';
+    const screenCategoryProb =
+      categoryAns?.probabilities && categoryAns.choice
+        ? categoryAns.probabilities[categoryAns.choice]
+        : categoryAns?.confidence;
+    const severityScore = sysRes.answers?.severity?.score ?? 0;
+    const severityLabels = ['正常 (Normal)', '情報 (Info)', '警告 (Warning)', '緊急 (Critical)'];
+    const severityLabel = severityLabels[Math.min(3, Math.max(0, Math.round(severityScore)))];
+    const usedModel = sysRes.model || systemOne.model || model || 'default';
+
+    const results: Record<
+      string,
+      {
+        matched: boolean;
+        confidence: number;
+        reason: string;
+        systemOne: SystemOneWatchdogMeta;
+      }
+    > = {};
+
+    for (const item of items) {
+      const qKey = `job_${item.jobId}`;
+      const probability = sysRes.answers?.[qKey]?.noul ?? 0;
+      const matched = probability >= threshold;
+      const reason = `⚡ [/v1/systemone 一括バッチ判定 (${items.length}件同時・計${sysRes.durationMs}ms)] 条件合致確率: ${Math.round(
+        probability * 100
+      )}% (閾値: ${Math.round(threshold * 100)}%) | 画面分類: ${screenCategory} (${Math.round(
+        (screenCategoryProb || 0) * 100
+      )}%) | 重要度スコア: ${severityScore.toFixed(2)}/3.0 (${severityLabel})`;
+
+      results[item.jobId] = {
+        matched,
+        confidence: probability,
+        reason,
+        systemOne: {
+          used: true,
+          model: usedModel,
+          durationMs: sysRes.durationMs,
+          probability,
+          screenCategory,
+          screenCategoryProb,
+          severityScore,
+          severityLabel,
+          batchSize: items.length,
+        },
+      };
+    }
+
+    return results;
   }
 }

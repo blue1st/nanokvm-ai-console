@@ -14,5 +14,16 @@
     "insecureSkipVerify": true
   },
   "stepExecutionMode": false,
-  "maxScreenshots": 30
+  "maxScreenshots": 30,
+  "systemOne": {
+    "enabled": false,
+    "baseUrl": "",
+    "apiKey": "",
+    "model": "default",
+    "confidenceCutoff": 0.6,
+    "useForWatchdog": true,
+    "useForStepVerification": true,
+    "useForSmartApproval": true,
+    "useForBatchWatchdog": true
+  }
 }

@@ -1,3 +1,14 @@
+export interface SystemOneConfig {
+  enabled: boolean;
+  baseUrl: string; // Optional separate endpoint (if empty, uses llama.baseUrl)
+  model: string; // Decision model ID (if empty, uses default or llama.model)
+  apiKey: string; // Optional separate API key
+  confidenceThreshold: number; // Cutoff probability (0.1 - 0.99, default 0.7)
+  useForWatchdog: boolean; // Use /v1/systemone for Watchdog & Batch Watchdog
+  useForStepVerification: boolean; // Use /v1/systemone to verify step results
+  useForSmartApproval: boolean; // Use /v1/systemone to score tool risk before execution
+}
+
 export interface AppConfig {
   llama: {
     baseUrl: string; // e.g. http://192.168.1.100:8080
@@ -8,6 +19,7 @@ export interface AppConfig {
     systemPrompt: string;
     timeoutSeconds?: number; // e.g. 180 (3 min) or 300 (5 min) for local LLMs
   };
+  systemOne?: SystemOneConfig;
   nanokvm: {
     endpoint: string; // e.g. https://<NanoKVM-IP>/api/mcp
     apiKey: string;
@@ -34,6 +46,39 @@ export interface MCPTool {
   };
 }
 
+export interface SystemOneRiskMeta {
+  used: boolean;
+  model: string;
+  durationMs: number;
+  riskScore: number; // 0 to 3
+  riskLabel: string;
+  needsApprovalProb: number; // 0.0 to 1.0 (noul)
+  category?: string;
+  triggeredApproval?: boolean;
+}
+
+export interface SystemOneVerifyMeta {
+  used: boolean;
+  model: string;
+  durationMs: number;
+  succeededProb: number; // 0.0 to 1.0 (noul)
+  screenState: string; // choice
+  screenStateProb?: number;
+}
+
+export interface SystemOneWatchdogMeta {
+  used: boolean;
+  model: string;
+  durationMs: number;
+  probability: number; // noul probability (0.0 - 1.0)
+  screenCategory?: string;
+  screenCategoryProb?: number;
+  severityScore?: number; // 0 - 3
+  severityLabel?: string;
+  batchSize?: number; // > 1 if evaluated via Batch Watchdog
+  fallbackUsed?: boolean;
+}
+
 export interface ToolCallItem {
   id: string;
   name: string;
@@ -44,6 +89,8 @@ export interface ToolCallItem {
     isError?: boolean;
   };
   status: 'pending' | 'running' | 'waiting_approval' | 'completed' | 'failed' | 'skipped';
+  systemOneRisk?: SystemOneRiskMeta;
+  systemOneVerify?: SystemOneVerifyMeta;
 }
 
 export interface ChatMessage {
@@ -59,6 +106,13 @@ export interface ConnectionStatus {
   llm: {
     connected: boolean;
     model?: string;
+    error?: string;
+  };
+  systemOne?: {
+    enabled: boolean;
+    available: boolean;
+    model?: string;
+    endpoint?: string;
     error?: string;
   };
   mcp: {
@@ -103,6 +157,7 @@ export interface JobExecutionLog {
   screenshotUrl?: string;     // Base64 screenshot captured during run
   actionTaken?: string;       // Details of action taken if any
   error?: string;
+  systemOne?: SystemOneWatchdogMeta;
 }
 
 export interface ScheduledJob {
@@ -154,6 +209,7 @@ export interface ScheduledJob {
     summary: string;
     matched?: boolean;
     error?: string;
+    usedSystemOne?: boolean;
   };
 }
 
@@ -164,5 +220,14 @@ export interface UpdateCheckResult {
   releaseUrl: string;
   releaseNotes?: string;
   publishedAt?: string;
+  error?: string;
+}
+
+export interface SystemOneTestResult {
+  success: boolean;
+  model?: string;
+  durationMs?: number;
+  sampleProbability?: number;
+  sampleChoice?: string;
   error?: string;
 }

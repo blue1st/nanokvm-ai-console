@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   Check,
   SkipForward,
+  Zap,
 } from 'lucide-react';
 import { VisualOverlayImage } from './VisualOverlayImage';
 import type { ChatMessage, ToolCallItem } from '../types';
@@ -254,7 +255,35 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({
             {toolCall.name}
           </span>
         </div>
-        <div className="flex items-center gap-2">{getStatusBadge()}</div>
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {toolCall.systemOneRisk && (
+            <span
+              title={`SystemOne Risk Scorer (${toolCall.systemOneRisk.model} / ${toolCall.systemOneRisk.durationMs}ms): ${toolCall.systemOneRisk.riskLabel} [category=${toolCall.systemOneRisk.category || 'N/A'}, prob=${Math.round(toolCall.systemOneRisk.needsApprovalProb * 100)}%]`}
+              className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border font-mono ${
+                toolCall.systemOneRisk.riskScore >= 2 || toolCall.systemOneRisk.triggeredApproval
+                  ? 'bg-amber-950/70 border-amber-600/60 text-amber-300'
+                  : 'bg-cyan-950/60 border-cyan-800/60 text-cyan-300'
+              }`}
+            >
+              <Zap className="w-2.5 h-2.5 text-cyan-400" />
+              Risk:{toolCall.systemOneRisk.riskScore}/3
+            </span>
+          )}
+          {toolCall.systemOneVerify && (
+            <span
+              title={`SystemOne Step Verify (${toolCall.systemOneVerify.model} / ${toolCall.systemOneVerify.durationMs}ms): state=${toolCall.systemOneVerify.screenState}, successProb=${Math.round(toolCall.systemOneVerify.succeededProb * 100)}%`}
+              className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border font-mono ${
+                toolCall.systemOneVerify.succeededProb >= 0.5
+                  ? 'bg-emerald-950/60 border-emerald-700/60 text-emerald-300'
+                  : 'bg-rose-950/60 border-rose-700/60 text-rose-300'
+              }`}
+            >
+              <Zap className="w-2.5 h-2.5 text-cyan-400" />
+              Verify:{toolCall.systemOneVerify.succeededProb >= 0.5 ? 'OK' : 'WARN'} ({Math.round(toolCall.systemOneVerify.succeededProb * 100)}%)
+            </span>
+          )}
+          {getStatusBadge()}
+        </div>
       </div>
 
       {/* Waiting Approval Interactive Banner */}
@@ -263,8 +292,14 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({
           <div className="flex items-center gap-2 text-amber-200">
             <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 animate-bounce" />
             <div>
-              <div className="font-semibold text-xs text-amber-300">
-                ツールの実行承認が必要です
+              <div className="font-semibold text-xs text-amber-300 flex items-center gap-1.5 flex-wrap">
+                <span>ツールの実行承認が必要です</span>
+                {toolCall.systemOneRisk?.triggeredApproval && (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-600/60 text-cyan-300 font-mono">
+                    <Zap className="w-2.5 h-2.5 text-cyan-400" />
+                    /v1/systemone リスク検知 ({toolCall.systemOneRisk.riskLabel} ・ 危険度 {Math.round(toolCall.systemOneRisk.needsApprovalProb * 100)}%)
+                  </span>
+                )}
               </div>
               <div className="text-[11px] text-amber-400/90 font-mono">
                 {toolCall.name}({JSON.stringify(toolCall.arguments).slice(0, 50)}...)
@@ -312,9 +347,28 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({
         </div>
       )}
 
-      {/* Expandable Details: Arguments & Text Output */}
+      {/* Expandable Details: Arguments, SystemOne Telemetry & Text Output */}
       {isOpen && (
         <div className="p-3 space-y-2 border-t border-slate-800 bg-slate-950 font-mono text-[11px]">
+          {(toolCall.systemOneRisk || toolCall.systemOneVerify) && (
+            <div className="p-2 rounded bg-cyan-950/30 border border-cyan-900/50 space-y-1 text-cyan-200">
+              <div className="text-cyan-400 font-semibold flex items-center gap-1">
+                <Zap className="w-3 h-3" />
+                Decision Model (/v1/systemone) 判定テレメトリ:
+              </div>
+              {toolCall.systemOneRisk && (
+                <div className="text-[10px] text-slate-300">
+                  ・[事前リスク評価] Risk={toolCall.systemOneRisk.riskScore}/3 ({toolCall.systemOneRisk.riskLabel}) | Category={toolCall.systemOneRisk.category || 'N/A'} | 承認必要確率={Math.round(toolCall.systemOneRisk.needsApprovalProb * 100)}% | {toolCall.systemOneRisk.durationMs}ms ({toolCall.systemOneRisk.model})
+                </div>
+              )}
+              {toolCall.systemOneVerify && (
+                <div className="text-[10px] text-slate-300">
+                  ・[事後ステップ検証] 判定={toolCall.systemOneVerify.succeededProb >= 0.5 ? '成功 (YES)' : '要確認 (NO)'} (確率={Math.round(toolCall.systemOneVerify.succeededProb * 100)}%) | 状態={toolCall.systemOneVerify.screenState} | {toolCall.systemOneVerify.durationMs}ms ({toolCall.systemOneVerify.model})
+                </div>
+              )}
+            </div>
+          )}
+
           <div>
             <div className="text-slate-400 font-semibold mb-1">引数 (Arguments):</div>
             <pre className="p-2 rounded bg-slate-900 text-slate-300 overflow-x-auto">

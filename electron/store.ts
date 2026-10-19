@@ -27,6 +27,16 @@ export const DEFAULT_CONFIG: AppConfig = {
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     timeoutSeconds: 180,
   },
+  systemOne: {
+    enabled: false,
+    baseUrl: '',
+    model: '',
+    apiKey: '',
+    confidenceThreshold: 0.7,
+    useForWatchdog: true,
+    useForStepVerification: true,
+    useForSmartApproval: true,
+  },
   nanokvm: {
     endpoint: '',
     apiKey: '',
@@ -55,6 +65,11 @@ export class ConfigStore {
       llama: {
         ...this.config.llama,
         ...(newConfig.llama || {}),
+      },
+      systemOne: {
+        ...DEFAULT_CONFIG.systemOne!,
+        ...(this.config.systemOne || {}),
+        ...(newConfig.systemOne || {}),
       },
       nanokvm: {
         ...this.config.nanokvm,
@@ -87,6 +102,7 @@ export class ConfigStore {
         const parsed = JSON.parse(raw);
         return {
           llama: { ...DEFAULT_CONFIG.llama, ...(parsed.llama || {}) },
+          systemOne: { ...DEFAULT_CONFIG.systemOne!, ...(parsed.systemOne || {}) },
           nanokvm: { ...DEFAULT_CONFIG.nanokvm, ...(parsed.nanokvm || {}) },
           stepExecutionMode:
             parsed.stepExecutionMode !== undefined

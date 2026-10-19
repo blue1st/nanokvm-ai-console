@@ -1,9 +1,10 @@
 import { NanoKVMMCPClient } from './mcp-client';
 import { LlamaClient } from './llm-client';
-import type { ChatMessage } from '../src/types';
+import type { ChatMessage, SystemOneConfig } from '../src/types';
 
 const mcpClient = new NanoKVMMCPClient();
 const llamaClient = new LlamaClient();
+let currentSystemOneConfig: SystemOneConfig | undefined;
 
 let currentAbortController: AbortController | null = null;
 const pendingApprovals = new Map<string, (decision: 'approve' | 'skip' | 'abort') => void>();
@@ -74,9 +75,12 @@ process.on('message', async (msg: WorkerMessage) => {
   try {
     switch (action) {
       case 'init': {
-        const { llama, nanokvm } = payload;
+        const { llama, systemOne, nanokvm } = payload;
         if (llama?.baseUrl) {
           llamaClient.init(llama.baseUrl, llama.apiKey || '');
+        }
+        if (systemOne) {
+          currentSystemOneConfig = systemOne;
         }
         if (nanokvm?.endpoint && nanokvm?.apiKey) {
           await mcpClient.connect(
@@ -108,6 +112,13 @@ process.on('message', async (msg: WorkerMessage) => {
         } else {
           process.send?.({ id, success: true, data: models });
         }
+        break;
+      }
+
+      case 'systemOne:test': {
+        const { baseUrl, apiKey, model } = payload || {};
+        const testRes = await llamaClient.testSystemOne({ baseUrl, apiKey, model });
+        process.send?.({ id, success: true, data: testRes });
         break;
       }
 
@@ -156,6 +167,40 @@ process.on('message', async (msg: WorkerMessage) => {
           llmError = e instanceof Error ? e.message : String(e);
         }
 
+        let systemOneStatus: {
+          enabled: boolean;
+          available: boolean;
+          model?: string;
+          endpoint?: string;
+          error?: string;
+        } = {
+          enabled: !!currentSystemOneConfig?.enabled,
+          available: false,
+          model: currentSystemOneConfig?.model || detectedModel || 'default',
+          endpoint: currentSystemOneConfig?.baseUrl || undefined,
+        };
+
+        if (currentSystemOneConfig?.enabled) {
+          if (currentSystemOneConfig.baseUrl) {
+            try {
+              const sysModels = await llamaClient.getModels(
+                currentSystemOneConfig.baseUrl,
+                currentSystemOneConfig.apiKey
+              );
+              systemOneStatus.available = true;
+              if (!currentSystemOneConfig.model && sysModels.length > 0) {
+                systemOneStatus.model = sysModels[0];
+              }
+            } catch (e) {
+              systemOneStatus.available = false;
+              systemOneStatus.error = e instanceof Error ? e.message : String(e);
+            }
+          } else {
+            systemOneStatus.available = llmOk;
+            systemOneStatus.error = llmError;
+          }
+        }
+
         process.send?.({
           id,
           success: true,
@@ -165,6 +210,7 @@ process.on('message', async (msg: WorkerMessage) => {
               model: detectedModel || 'default',
               error: llmError,
             },
+            systemOne: systemOneStatus,
             mcp: {
               connected: mcpClient.getConnected(),
               toolCount: mcpClient.getCachedTools().length,
@@ -203,6 +249,9 @@ process.on('message', async (msg: WorkerMessage) => {
       case 'chat:send': {
         const { history, content, config } = payload;
         llamaClient.init(config.llama.baseUrl, config.llama.apiKey);
+        if (config.systemOne) {
+          currentSystemOneConfig = config.systemOne;
+        }
 
         const fullHistory: ChatMessage[] = [
           ...history,
@@ -224,6 +273,7 @@ process.on('message', async (msg: WorkerMessage) => {
           temperature: config.llama.temperature,
           maxTokens: config.llama.maxTokens,
           timeoutSeconds: config.llama.timeoutSeconds,
+          systemOne: config.systemOne,
           downscaleImage: downscaleImageViaMain,
           mcpClient,
           signal: currentAbortController.signal,
@@ -261,10 +311,30 @@ process.on('message', async (msg: WorkerMessage) => {
           condition,
           model: modelToUse,
           timeoutSeconds: config?.llama?.timeoutSeconds || 60,
+          systemOne: config?.systemOne,
           downscaleImage: downscaleImageViaMain,
         });
 
         process.send?.({ id, success: true, data: evalResult });
+        break;
+      }
+
+      case 'watchdog:evaluateBatch': {
+        const { imageUrl, items, config } = payload || {};
+        if (config?.llama?.baseUrl) {
+          llamaClient.init(config.llama.baseUrl, config.llama.apiKey);
+        }
+        const modelToUse = config?.llama?.model || 'default';
+        const batchResult = await llamaClient.evaluateWatchdogBatch({
+          imageUrl,
+          items: items || [],
+          model: modelToUse,
+          timeoutSeconds: config?.llama?.timeoutSeconds || 60,
+          systemOne: config?.systemOne,
+          downscaleImage: downscaleImageViaMain,
+        });
+
+        process.send?.({ id, success: true, data: batchResult });
         break;
       }
 

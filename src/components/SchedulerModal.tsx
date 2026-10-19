@@ -511,6 +511,12 @@ export const SchedulerModal: React.FC<SchedulerModalProps> = ({
                               ) : (
                                 <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
                               )}
+                              {job.lastResult.usedSystemOne && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-950/70 border border-cyan-700/60 text-cyan-300 text-[10px] font-mono shrink-0">
+                                  <Zap className="w-2.5 h-2.5 text-cyan-400" />
+                                  SystemOne
+                                </span>
+                              )}
                               <span className="truncate">{job.lastResult.summary}</span>
                             </div>
                             <span className="text-[10px] text-slate-400 shrink-0 ml-2">
@@ -889,6 +895,15 @@ export const SchedulerModal: React.FC<SchedulerModalProps> = ({
                               {log.matched ? '🎯 条件合致' : '条件不一致'}
                             </span>
                           )}
+                          {log.systemOne && (
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/70 border border-cyan-700/60 text-cyan-300 font-mono">
+                              <Zap className="w-2.5 h-2.5 text-cyan-400" />
+                              /v1/systemone
+                              {log.systemOne.batchSize && log.systemOne.batchSize > 1
+                                ? ` (Batch×${log.systemOne.batchSize})`
+                                : ''}
+                            </span>
+                          )}
                         </div>
 
                         <div className="text-[11px] text-slate-400 flex items-center gap-3">
@@ -896,6 +911,27 @@ export const SchedulerModal: React.FC<SchedulerModalProps> = ({
                           <span>{new Date(log.timestamp).toLocaleString()}</span>
                         </div>
                       </div>
+
+                      {/* SystemOne Telemetry Bar */}
+                      {log.systemOne && (
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono bg-cyan-950/30 border border-cyan-900/50 text-cyan-200 px-2.5 py-1.5 rounded-lg">
+                          <span>⚡ Model: {log.systemOne.model}</span>
+                          <span>• 推論: {log.systemOne.durationMs}ms</span>
+                          {log.systemOne.probability !== undefined && (
+                            <span>
+                              • YES確率(noul): {Math.round(log.systemOne.probability * 100)}%
+                            </span>
+                          )}
+                          {log.systemOne.screenCategory && (
+                            <span>• 状態(choice): {log.systemOne.screenCategory}</span>
+                          )}
+                          {log.systemOne.severityLabel && (
+                            <span>
+                              • 深刻度(score): {log.systemOne.severityScore ?? 0}/3 ({log.systemOne.severityLabel})
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Summary / Reason */}
                       <p className="text-slate-300 leading-relaxed bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">

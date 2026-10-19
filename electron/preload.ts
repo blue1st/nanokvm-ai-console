@@ -8,6 +8,7 @@ import type {
   ScheduledJob,
   JobExecutionLog,
   UpdateCheckResult,
+  SystemOneTestResult,
 } from '../src/types';
 
 export interface ElectronAPI {
@@ -21,6 +22,11 @@ export interface ElectronAPI {
     baseUrl: string,
     apiKey: string
   ) => Promise<{ success: boolean; models: string[]; error?: string }>;
+  testSystemOne: (params: {
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+  }) => Promise<SystemOneTestResult>;
   connectMCP: (
     endpoint: string,
     apiKey: string,
@@ -66,6 +72,7 @@ const api: ElectronAPI = {
   saveConfig: (cfg) => ipcRenderer.invoke('config:save', cfg),
   getLlamaModels: (url, key) => ipcRenderer.invoke('llama:getModels', url, key),
   testLlamaConnection: (url, key) => ipcRenderer.invoke('llama:test', url, key),
+  testSystemOne: (params) => ipcRenderer.invoke('systemOne:test', params),
   connectMCP: (endpoint, apiKey, insecureSkipVerify) =>
     ipcRenderer.invoke('mcp:connect', endpoint, apiKey, insecureSkipVerify),
   disconnectMCP: () => ipcRenderer.invoke('mcp:disconnect'),

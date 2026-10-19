@@ -2,7 +2,12 @@ import electron from 'electron';
 import type { BrowserWindow } from 'electron';
 import type { JobStore } from './job-store';
 import type { ConfigStore } from './store';
-import type { ScheduledJob, JobExecutionLog, MCPTool } from '../src/types';
+import type {
+  ScheduledJob,
+  JobExecutionLog,
+  MCPTool,
+  SystemOneWatchdogMeta,
+} from '../src/types';
 
 interface WorkerManagerLike {
   send<T = any>(action: string, payload?: any): Promise<T>;
@@ -67,7 +72,38 @@ export class SchedulerEngine {
 
     this.isProcessing = true;
     try {
-      for (const job of dueJobs) {
+      const config = this.configStore.getConfig();
+      const dueWatchdogJobs = dueJobs.filter(
+        (j) => j.mode === 'watchdog' && j.watchdogConfig?.condition
+      );
+      const otherDueJobs = dueJobs.filter(
+        (j) => !(j.mode === 'watchdog' && j.watchdogConfig?.condition)
+      );
+
+      // Idea 4: If multiple watchdog jobs are due and /v1/systemone is enabled, evaluate them in a single batch forward pass!
+      if (
+        dueWatchdogJobs.length > 1 &&
+        config.systemOne?.enabled &&
+        config.systemOne.useForWatchdog
+      ) {
+        try {
+          await this.executeBatchWatchdogJobs(dueWatchdogJobs);
+        } catch (batchErr) {
+          console.warn(
+            '[Scheduler] Batch Watchdog via /v1/systemone failed, falling back to individual execution:',
+            batchErr
+          );
+          for (const job of dueWatchdogJobs) {
+            await this.executeJob(job);
+          }
+        }
+      } else {
+        for (const job of dueWatchdogJobs) {
+          await this.executeJob(job);
+        }
+      }
+
+      for (const job of otherDueJobs) {
         await this.executeJob(job);
       }
     } catch (err) {
@@ -107,6 +143,87 @@ export class SchedulerEngine {
       this.store.saveJob(job);
     }
     return nextRun;
+  }
+
+  /**
+   * Execute multiple Watchdog jobs in a single /v1/systemone batch forward pass (Idea 4)
+   */
+  private async executeBatchWatchdogJobs(jobs: ScheduledJob[]): Promise<void> {
+    const batchStartTime = Date.now();
+    const config = this.configStore.getConfig();
+    console.log(
+      `[Scheduler:BatchWatchdog] Capturing screen once and evaluating ${jobs.length} watchdog jobs via /v1/systemone...`
+    );
+
+    const screenRes = await this.captureScreen();
+    const items = jobs.map((j) => ({
+      jobId: j.id,
+      jobName: j.name,
+      condition: j.watchdogConfig!.condition,
+    }));
+
+    const batchResults = await this.workerMgr.send<
+      Record<
+        string,
+        {
+          matched: boolean;
+          confidence: number;
+          reason: string;
+          systemOne: SystemOneWatchdogMeta;
+        }
+      >
+    >('watchdog:evaluateBatch', {
+      imageUrl: screenRes.imageUrl,
+      items,
+      config,
+    });
+
+    for (const job of jobs) {
+      const evalResult = batchResults[job.id];
+      if (!evalResult) continue;
+
+      const log: JobExecutionLog = {
+        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        jobId: job.id,
+        jobName: job.name,
+        mode: 'watchdog',
+        timestamp: batchStartTime,
+        durationMs: Date.now() - batchStartTime,
+        success: true,
+        summary: '',
+        screenshotUrl: screenRes.imageUrl,
+        matched: evalResult.matched,
+        confidence: evalResult.confidence,
+        reason: evalResult.reason,
+        systemOne: evalResult.systemOne,
+      };
+
+      await this.applyWatchdogResult(job, log, evalResult);
+
+      log.durationMs = Date.now() - batchStartTime;
+      this.store.addLog(log);
+
+      let nextRun: number | undefined;
+      if (job.trigger.type === 'interval' && job.trigger.intervalMinutes && job.enabled) {
+        nextRun = Date.now() + job.trigger.intervalMinutes * 60 * 1000;
+      } else if (job.trigger.type === 'once') {
+        job.enabled = false;
+      }
+
+      this.store.updateJobResult(
+        job.id,
+        {
+          success: log.success,
+          summary: log.summary,
+          matched: log.matched,
+          error: log.error,
+          usedSystemOne: !!log.systemOne?.used,
+        },
+        nextRun
+      );
+    }
+
+    this.notifyRenderer();
   }
 
   /**
@@ -159,6 +276,7 @@ export class SchedulerEngine {
           summary: log.summary,
           matched: log.matched,
           error: log.error,
+          usedSystemOne: !!log.systemOne?.used,
         },
         nextRun
       );
@@ -186,12 +304,13 @@ export class SchedulerEngine {
     const screenRes = await this.captureScreen();
     log.screenshotUrl = screenRes.imageUrl;
 
-    // 2. Evaluate condition via LLM in network worker
-    console.log(`[Scheduler:Watchdog] Evaluating visual condition via LLM...`);
+    // 2. Evaluate condition via LLM / SystemOne in network worker
+    console.log(`[Scheduler:Watchdog] Evaluating visual condition...`);
     const evalResult = await this.workerMgr.send<{
       matched: boolean;
       confidence: number;
       reason: string;
+      systemOne?: SystemOneWatchdogMeta;
     }>('watchdog:evaluate', {
       imageUrl: screenRes.imageUrl,
       condition: watchdog.condition,
@@ -201,9 +320,26 @@ export class SchedulerEngine {
     log.matched = evalResult.matched;
     log.confidence = evalResult.confidence;
     log.reason = evalResult.reason;
+    log.systemOne = evalResult.systemOne;
+
+    await this.applyWatchdogResult(job, log, evalResult);
+  }
+
+  private async applyWatchdogResult(
+    job: ScheduledJob,
+    log: JobExecutionLog,
+    evalResult: {
+      matched: boolean;
+      confidence: number;
+      reason: string;
+      systemOne?: SystemOneWatchdogMeta;
+    }
+  ): Promise<void> {
+    const watchdog = job.watchdogConfig!;
+    const sysTag = evalResult.systemOne?.used ? '[⚡SystemOne] ' : '';
 
     if (evalResult.matched) {
-      log.summary = `🎯 条件検知 (${Math.round((evalResult.confidence || 0) * 100)}%): ${evalResult.reason}`;
+      log.summary = `🎯 ${sysTag}条件検知 (${Math.round((evalResult.confidence || 0) * 100)}%): ${evalResult.reason}`;
       console.log(`[Scheduler:Watchdog] Condition MATCHED for "${job.name}"! Reason: ${evalResult.reason}`);
 
       // Handle onMatched:
@@ -212,7 +348,7 @@ export class SchedulerEngine {
       // A. Desktop Notification
       if (onMatched.notify !== false) {
         this.sendDesktopNotification(
-          onMatched.notificationTitle || `🚨 条件検知: ${job.name}`,
+          onMatched.notificationTitle || `🚨 ${sysTag}条件検知: ${job.name}`,
           onMatched.notificationBody || evalResult.reason
         );
       }
@@ -252,7 +388,7 @@ export class SchedulerEngine {
         console.log(`[Scheduler:Watchdog] Job "${job.name}" automatically disabled after match.`);
       }
     } else {
-      log.summary = `条件不一致 (${Math.round((evalResult.confidence || 0) * 100)}%): ${evalResult.reason}`;
+      log.summary = `${sysTag}条件不一致 (${Math.round((evalResult.confidence || 0) * 100)}%): ${evalResult.reason}`;
       console.log(`[Scheduler:Watchdog] Condition not matched for "${job.name}". ${evalResult.reason}`);
     }
   }

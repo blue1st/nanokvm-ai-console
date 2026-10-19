@@ -357,6 +357,7 @@ app.whenReady().then(async () => {
   const initialConfig = store.getConfig();
   workerMgr.send('init', {
     llama: initialConfig.llama,
+    systemOne: initialConfig.systemOne,
     nanokvm: initialConfig.nanokvm,
   }).catch((err) => {
     console.warn('Initial worker init warning:', err);
@@ -396,6 +397,7 @@ ipcMain.handle('config:save', async (_, newConfig: Partial<AppConfig>) => {
   // Sync with worker
   await workerMgr.send('init', {
     llama: updated.llama,
+    systemOne: updated.systemOne,
     nanokvm: updated.nanokvm,
   });
 
@@ -433,6 +435,21 @@ ipcMain.handle('llama:test', async (_, baseUrl: string, apiKey: string) => {
     };
   }
 });
+
+ipcMain.handle(
+  'systemOne:test',
+  async (_, params: { baseUrl?: string; apiKey?: string; model?: string }) => {
+    try {
+      return await workerMgr.send('systemOne:test', params || {});
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        error: `テスト失敗: ${msg}`,
+      };
+    }
+  }
+);
 
 ipcMain.handle(
   'mcp:connect',
